@@ -42,6 +42,9 @@ http://127.0.0.1:8000
 | `ROSIE_USE_AI_GREETING` | `false` | 是否调用 `ai-agent` 生成欢迎语 |
 | `ROSIE_AI_AGENT_URL` | `http://127.0.0.1:8010` | ai-agent 地址 |
 | `ROSIE_AI_TIMEOUT_SECONDS` | `10` | 调用 ai-agent 超时时间 |
+| `ROSIE_REALTIME_LISTEN_ENABLED` | `false` | 是否启用 jambonz 实时音频 websocket |
+| `ROSIE_REALTIME_WS_URL` | 空 | realtime-voice WebSocket 地址 |
+| `ROSIE_REALTIME_ACTION_HOOK` | 空 | listen 结束后的回调地址 |
 
 可以复制 `.env.example`：
 
@@ -76,6 +79,18 @@ ROSIE_AI_TIMEOUT_SECONDS=10
 ```
 
 AI greeting 失败时会自动降级为固定欢迎语，不会阻塞电话接听。
+
+## 接入实时语音 WebSocket
+
+这不是语音留言，而是后续实时对话的底座：jambonz 会通过 `listen` verb 把通话音频实时推到 `realtime-voice`，并允许我们把音频实时送回电话侧。
+
+```env
+ROSIE_REALTIME_LISTEN_ENABLED=true
+ROSIE_REALTIME_WS_URL=ws://你的服务器:8020/ws/jambonz/audio
+ROSIE_REALTIME_ACTION_HOOK=http://你的服务器:8000/webhooks/jambonz/listen-complete
+```
+
+当前第一版只验证实时音频 WebSocket 是否能建立和收到 PCM 音频。下一步会把它接到 STT/TTS/Pipecat。
 
 ## jambonz 配置
 

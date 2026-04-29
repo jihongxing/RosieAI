@@ -11,7 +11,13 @@ from pydantic import BaseModel, Field
 from .ai_agent import generate_greeting
 from .config import get_settings
 from .db import Database
-from .jambonz import extract_call, unknown_number_verbs, welcome_text_verbs, welcome_verbs
+from .jambonz import (
+    extract_call,
+    realtime_listen_verbs,
+    unknown_number_verbs,
+    welcome_text_verbs,
+    welcome_verbs,
+)
 from .notifier import notify_wecom
 
 
@@ -97,6 +103,7 @@ async def inbound_call(request: Request) -> list[dict[str, Any]]:
         ),
     )
 
+    reply = None
     if settings.use_ai_greeting:
         reply = await generate_greeting(
             settings.ai_agent_url,
@@ -104,9 +111,27 @@ async def inbound_call(request: Request) -> list[dict[str, Any]]:
             call["from_number"],
             settings.ai_timeout_seconds,
         )
-        if reply:
-            return welcome_text_verbs(reply)
 
+    if settings.realtime_listen_enabled and settings.realtime_ws_url:
+        greeting = reply or (
+            f"您好，我是{merchant['merchant_name']}的 AI 前台 Rosie。"
+            "机主现在不方便接电话，请您直接说来电事项。"
+        )
+        return realtime_listen_verbs(
+            greeting,
+            settings.realtime_ws_url,
+            settings.realtime_action_hook,
+            metadata={
+                "merchant_id": merchant["merchant_id"],
+                "merchant_name": merchant["merchant_name"],
+                "caller_number": call["from_number"],
+                "access_number": call["to_number"],
+                "call_sid": call["call_sid"],
+            },
+        )
+
+    if reply:
+        return welcome_text_verbs(reply)
     return welcome_verbs(merchant["merchant_name"])
 
 
@@ -118,6 +143,21 @@ async def call_status(request: Request) -> dict[str, str]:
         {
             "call_sid": call["call_sid"],
             "event_type": "jambonz_status",
+            "call_status": call["call_status"],
+            "raw_payload": json.dumps(payload, ensure_ascii=False),
+        }
+    )
+    return {"status": "ok"}
+
+
+@app.post("/webhooks/jambonz/listen-complete")
+async def listen_complete(request: Request) -> dict[str, str]:
+    payload = await _json_payload(request)
+    call = extract_call(payload)
+    db.insert_event(
+        {
+            "call_sid": call["call_sid"],
+            "event_type": "jambonz_listen_complete",
             "call_status": call["call_status"],
             "raw_payload": json.dumps(payload, ensure_ascii=False),
         }

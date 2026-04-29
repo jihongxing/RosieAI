@@ -47,6 +47,32 @@ def hangup() -> dict[str, str]:
     return {"verb": "hangup"}
 
 
+def listen(
+    url: str,
+    action_hook: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    verb: dict[str, Any] = {
+        "verb": "listen",
+        "url": url,
+        "sampleRate": 16000,
+        "mixType": "mono",
+        "playBeep": False,
+        "timeout": 30,
+        "maxLength": 300,
+        "bidirectionalAudio": {
+            "enabled": True,
+            "streaming": True,
+            "sampleRate": 16000,
+        },
+    }
+    if action_hook:
+        verb["actionHook"] = action_hook
+    if metadata:
+        verb["metadata"] = metadata
+    return verb
+
+
 def welcome_verbs(merchant_name: str) -> list[dict[str, Any]]:
     return welcome_text_verbs(
         f"您好，这里是{merchant_name}的 AI 接线员 Rosie。"
@@ -59,6 +85,19 @@ def welcome_text_verbs(text: str) -> list[dict[str, Any]]:
     return [
         say(text),
         pause(1),
+        hangup(),
+    ]
+
+
+def realtime_listen_verbs(
+    greeting_text: str,
+    websocket_url: str,
+    action_hook: str | None,
+    metadata: dict[str, Any],
+) -> list[dict[str, Any]]:
+    return [
+        say(greeting_text),
+        listen(websocket_url, action_hook=action_hook, metadata=metadata),
         hangup(),
     ]
 

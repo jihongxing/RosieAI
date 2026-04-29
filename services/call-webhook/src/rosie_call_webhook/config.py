@@ -18,6 +18,9 @@ class Settings:
     ai_agent_url: str | None
     use_ai_greeting: bool
     ai_timeout_seconds: float
+    realtime_listen_enabled: bool
+    realtime_ws_url: str | None
+    realtime_action_hook: str | None
 
 
 def _optional_env(name: str) -> str | None:
@@ -40,4 +43,7 @@ def get_settings() -> Settings:
         ai_agent_url=_optional_env("ROSIE_AI_AGENT_URL"),
         use_ai_greeting=os.getenv("ROSIE_USE_AI_GREETING", "false").lower() == "true",
         ai_timeout_seconds=float(os.getenv("ROSIE_AI_TIMEOUT_SECONDS", "10")),
+        realtime_listen_enabled=os.getenv("ROSIE_REALTIME_LISTEN_ENABLED", "false").lower() == "true",
+        realtime_ws_url=_optional_env("ROSIE_REALTIME_WS_URL"),
+        realtime_action_hook=_optional_env("ROSIE_REALTIME_ACTION_HOOK"),
     )
