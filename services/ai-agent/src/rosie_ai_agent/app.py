@@ -7,12 +7,12 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from .config import get_settings
-from .ollama import OllamaClient
+from .llm import create_llm_client
 from .prompts import chat_system_prompt, chat_user_prompt, extract_prompt
 
 
 settings = get_settings()
-ollama = OllamaClient(settings.ollama_base_url, settings.timeout_seconds)
+llm = create_llm_client(settings)
 
 app = FastAPI(title="Rosie AI Agent MVP", version="0.1.0")
 
@@ -46,23 +46,23 @@ class ExtractResponse(BaseModel):
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "model": settings.model}
+    return {"status": "ok", "provider": settings.provider, "model": settings.model}
 
 
 @app.get("/health/llm")
 async def llm_health() -> dict[str, Any]:
     try:
-        data = await ollama.health()
+        data = await llm.health()
     except httpx.HTTPError as exc:
-        raise HTTPException(status_code=503, detail=f"ollama unavailable: {exc}") from exc
-    return {"status": "ok", "ollama": data}
+        raise HTTPException(status_code=503, detail=f"llm unavailable: {exc}") from exc
+    return {"status": "ok", "provider": settings.provider, "llm": data}
 
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest) -> ChatResponse:
     history_text = "\n".join(f"{item.role}: {item.content}" for item in request.history[-8:])
     try:
-        reply = await ollama.generate(
+        reply = await llm.generate(
             model=settings.model,
             system=chat_system_prompt(request.merchant_name, request.merchant_profile),
             prompt=chat_user_prompt(request.customer_text, history_text),
@@ -75,11 +75,10 @@ async def chat(request: ChatRequest) -> ChatResponse:
 @app.post("/extract", response_model=ExtractResponse)
 async def extract(request: ExtractRequest) -> ExtractResponse:
     try:
-        result = await ollama.generate(
+        result = await llm.generate(
             model=settings.model,
             prompt=extract_prompt(request.merchant_name, request.transcript),
         )
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=503, detail=f"llm request failed: {exc}") from exc
     return ExtractResponse(model=settings.model, result=result)
-

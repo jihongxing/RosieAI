@@ -4,12 +4,54 @@
 
 当前目标：
 
-- 使用本机 Ollama 承载 Qwen3 模型。
+- 支持 DeepSeek / OpenAI-compatible API。
+- 支持本机 Ollama 承载 Qwen3 模型。
 - 提供 `/chat` 接口，生成 Rosie 电话前台回复。
 - 提供 `/extract` 接口，做通话摘要和关键信息提取的最小验证。
 - 暂不处理电话音频、STT、TTS、Pipecat。那些放到下一步。
 
-## 推荐模型
+## 方案 A：DeepSeek API，推荐小服务器使用
+
+你的服务器如果只有 2C2G，推荐先用 DeepSeek API。
+
+```bash
+cd services/ai-agent
+cp .env.example .env
+vi .env
+```
+
+配置：
+
+```env
+ROSIE_LLM_PROVIDER=openai_compatible
+ROSIE_OPENAI_BASE_URL=https://api.deepseek.com
+ROSIE_OPENAI_API_KEY=你的_deepseek_api_key
+ROSIE_LLM_MODEL=deepseek-chat
+```
+
+启动：
+
+```bash
+docker compose up -d --build
+```
+
+测试：
+
+```bash
+curl http://127.0.0.1:8010/health
+
+curl -X POST http://127.0.0.1:8010/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "merchant_name": "张三理发店",
+    "customer_text": "你好，我想预约明天下午剪头发",
+    "history": []
+  }'
+```
+
+## 方案 B：Ollama 本地模型
+
+如果服务器内存足够，再使用 Ollama。
 
 MVP 推荐：
 
@@ -47,15 +89,13 @@ http://127.0.0.1:8010
 
 ## Docker 启动
 
-如果 Ollama 安装在宿主机：
-
 ```bash
 cd services/ai-agent
 cp .env.example .env
 docker compose up -d --build
 ```
 
-Linux Docker 里通过 `host.docker.internal` 访问宿主机 Ollama。
+如果使用 Ollama，Linux Docker 里通过 `host.docker.internal` 访问宿主机 Ollama。
 
 ## API 测试
 
@@ -65,7 +105,7 @@ Linux Docker 里通过 `host.docker.internal` 访问宿主机 Ollama。
 curl http://127.0.0.1:8010/health
 ```
 
-模型检查：
+模型检查。DeepSeek 模式下这里只检查配置，真正联调用 `/chat`：
 
 ```bash
 curl http://127.0.0.1:8010/health/llm
@@ -106,4 +146,3 @@ ollama run qwen3:8b "你好"
 ```
 
 如果机器内存不足，先用 `qwen3:4b`。
-
