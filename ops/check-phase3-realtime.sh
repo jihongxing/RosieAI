@@ -27,10 +27,9 @@ echo
 echo "Webhook response:"
 curl -fsS -X POST http://127.0.0.1:8000/webhooks/jambonz/call \
   -H "Content-Type: application/json" \
-  -d "{\"callSid\":\"phase3-check\",\"from\":\"+8613811112222\",\"to\":\"+8617000000000\",\"direction\":\"inbound\",\"callStatus\":\"trying\"}" \
+  -d "{\"callSid\":\"phase3-check\",\"from\":\"+8613811112222\",\"to\":\"8613736849910\",\"direction\":\"inbound\",\"callStatus\":\"trying\"}" \
   && echo
 
 echo
 echo "Realtime sessions:"
 curl -fsS http://127.0.0.1:8020/sessions && echo
-

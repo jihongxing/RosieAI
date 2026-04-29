@@ -33,7 +33,7 @@ http://127.0.0.1:8000
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `ROSIE_DB_PATH` | `./data/rosie_mvp.sqlite3` | SQLite 数据库路径 |
-| `ROSIE_DEFAULT_ACCESS_NUMBER` | `+8617000000000` | 测试幕后接入号，对应 jambonz payload 里的 `to` |
+| `ROSIE_DEFAULT_ACCESS_NUMBER` | `8613736849910` | jambonz 测试号码，对应 payload 里的 `to` |
 | `ROSIE_DEFAULT_MERCHANT_ID` | `demo-merchant` | 测试商家 ID |
 | `ROSIE_DEFAULT_MERCHANT_NAME` | `测试商家` | 测试商家名称 |
 | `ROSIE_DEFAULT_TRANSFER_PHONE` | 空 | 后续转人工使用，当前 MVP 只保存 |
@@ -137,7 +137,7 @@ services\call-webhook\scripts\test-webhook.ps1
 ```bash
 curl -X POST http://127.0.0.1:8000/webhooks/jambonz/call ^
   -H "Content-Type: application/json" ^
-  -d "{\"callSid\":\"call-1\",\"from\":\"+8613811112222\",\"to\":\"+8617000000000\",\"callStatus\":\"trying\"}"
+  -d "{\"callSid\":\"call-1\",\"from\":\"+8613811112222\",\"to\":\"8613736849910\",\"callStatus\":\"trying\"}"
 ```
 
 查看通话记录：

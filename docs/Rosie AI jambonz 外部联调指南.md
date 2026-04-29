@@ -25,6 +25,16 @@ curl -4 ifconfig.me
 | ai-agent | 8010 | DeepSeek / OpenAI-compatible LLM |
 | realtime-voice | 8020 | jambonz realtime audio WebSocket |
 
+当前 jambonz 信息：
+
+```text
+Application SID:
+8c0cec24-7782-4794-abe9-79c02ffcbbff
+
+Phone Number:
+8613736849910
+```
+
 ## 2. 服务器侧必须可访问
 
 在开发机执行：
@@ -56,6 +66,9 @@ Applications -> Add Application
 ```text
 Name:
 Rosie MVP
+
+Application SID:
+8c0cec24-7782-4794-abe9-79c02ffcbbff
 ```
 
 Call Hook：
@@ -101,6 +114,9 @@ Phone Numbers / Numbers / DID
 选择测试号码，绑定：
 
 ```text
+Phone Number:
+8613736849910
+
 Application:
 Rosie MVP
 ```
@@ -223,4 +239,3 @@ realtime-voice -> STT -> ai-agent -> TTS -> WebSocket audio out
 ```
 
 也就是实时语音多轮对话。
-

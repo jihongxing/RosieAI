@@ -32,6 +32,13 @@ Phase 2 当前目标：
 | ai-agent | 8010 | 本地 LLM Agent API |
 | realtime-voice | 8020 | jambonz 实时音频 WebSocket |
 
+## 当前 jambonz 测试信息
+
+```text
+Application SID: 8c0cec24-7782-4794-abe9-79c02ffcbbff
+Phone Number: 8613736849910
+```
+
 ## Phase 3 外部联调辅助脚本
 
 配置 call-webhook 的 AI greeting 和 realtime listen：

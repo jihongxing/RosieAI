@@ -34,7 +34,7 @@ def get_settings() -> Settings:
         port=int(os.getenv("ROSIE_PORT", "8000")),
         reload=os.getenv("ROSIE_RELOAD", "false").lower() == "true",
         db_path=Path(os.getenv("ROSIE_DB_PATH", "./data/rosie_mvp.sqlite3")),
-        default_access_number=os.getenv("ROSIE_DEFAULT_ACCESS_NUMBER", "+8617000000000"),
+        default_access_number=os.getenv("ROSIE_DEFAULT_ACCESS_NUMBER", "8613736849910"),
         default_merchant_id=os.getenv("ROSIE_DEFAULT_MERCHANT_ID", "demo-merchant"),
         default_merchant_name=os.getenv("ROSIE_DEFAULT_MERCHANT_NAME", "测试商家"),
         default_transfer_phone=_optional_env("ROSIE_DEFAULT_TRANSFER_PHONE"),

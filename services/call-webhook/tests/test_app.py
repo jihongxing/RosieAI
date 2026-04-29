@@ -2,7 +2,7 @@ import os
 import tempfile
 
 os.environ["ROSIE_DB_PATH"] = tempfile.NamedTemporaryFile(delete=True).name
-os.environ["ROSIE_DEFAULT_ACCESS_NUMBER"] = "+8617000000000"
+os.environ["ROSIE_DEFAULT_ACCESS_NUMBER"] = "8613736849910"
 os.environ["ROSIE_DEFAULT_MERCHANT_NAME"] = "测试理发店"
 os.environ["ROSIE_USE_AI_GREETING"] = "false"
 os.environ["ROSIE_REALTIME_LISTEN_ENABLED"] = "false"
@@ -20,7 +20,7 @@ def test_inbound_call_returns_jambonz_verbs():
                 "callSid": "call-1",
                 "callId": "sip-call-1",
                 "from": "+8613811112222",
-                "to": "+8617000000000",
+                "to": "8613736849910",
                 "direction": "inbound",
                 "callStatus": "trying",
             },
@@ -40,7 +40,7 @@ def test_calls_are_persisted():
             json={
                 "callSid": "call-2",
                 "from": "+8613811112222",
-                "to": "+8617000000000",
+                "to": "8613736849910",
                 "callStatus": "trying",
             },
         )
