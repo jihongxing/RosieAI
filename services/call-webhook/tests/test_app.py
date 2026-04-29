@@ -5,6 +5,7 @@ os.environ["ROSIE_DB_PATH"] = tempfile.NamedTemporaryFile(delete=True).name
 os.environ["ROSIE_DEFAULT_ACCESS_NUMBER"] = "8613736849910"
 os.environ["ROSIE_DEFAULT_MERCHANT_NAME"] = "测试理发店"
 os.environ["ROSIE_USE_AI_GREETING"] = "false"
+os.environ["ROSIE_USE_AI_EXTRACT"] = "false"
 os.environ["ROSIE_REALTIME_LISTEN_ENABLED"] = "false"
 
 from fastapi.testclient import TestClient  # noqa: E402
@@ -102,3 +103,47 @@ def test_access_number_matches_with_or_without_plus_prefix():
         assert response.status_code == 200
         body = response.json()
         assert "李四花店" in body[0]["text"]
+
+
+def test_simulated_call_result_creates_inbox_item():
+    with TestClient(app) as client:
+        response = client.post(
+            "/simulate/call-result",
+            json={
+                "call_sid": "sim-call-1",
+                "from_number": "+8613811112222",
+                "to_number": "8613736849910",
+                "transcript": "你好，我想预约明天下午三点剪头发，我姓王。",
+            },
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["summary"]["intent"] == "appointment"
+        assert body["inbox"]["status"] == "needs_review"
+
+        inbox_response = client.get("/inbox")
+        assert inbox_response.status_code == 200
+        items = inbox_response.json()["items"]
+        assert items[0]["call_sid"] == "sim-call-1"
+        assert items[0]["title"] == "预约意向"
+
+
+def test_digest_preview_counts_pending_items():
+    with TestClient(app) as client:
+        client.post(
+            "/simulate/call-result",
+            json={
+                "call_sid": "sim-call-2",
+                "from_number": "+8613811113333",
+                "to_number": "8613736849910",
+                "transcript": "我们这里可以代开发票，还能办理POS机。",
+            },
+        )
+
+        response = client.get("/digests/preview")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["total"] >= 1
+        assert body["spam_count"] >= 1

@@ -54,6 +54,24 @@ Rosie 默认不做逐通实时通知，而是把漏接电话整理成小程序�
 | ai-agent | 8010 | 本地 LLM Agent API |
 | realtime-voice | 8020 | jambonz 实时音频 WebSocket |
 
+## 业务层 MVP 验证
+
+在真实 PSTN 线路就绪前，可以用模拟转写文本验证“漏接电话整理器”链路：
+
+```bash
+curl -X POST http://127.0.0.1:8000/simulate/call-result \
+  -H "Content-Type: application/json" \
+  -d '{
+    "call_sid": "demo-summary-1",
+    "from_number": "+8613811112222",
+    "to_number": "8613736849910",
+    "transcript": "你好，我想预约明天下午三点剪头发，我姓王。"
+  }'
+
+curl http://127.0.0.1:8000/inbox
+curl http://127.0.0.1:8000/digests/preview
+```
+
 ## 当前 jambonz 测试信息
 
 ```text

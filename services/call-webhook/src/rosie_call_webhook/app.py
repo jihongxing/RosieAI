@@ -5,10 +5,10 @@ import json
 import logging
 from typing import Any
 
-from fastapi import FastAPI, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
-from .ai_agent import generate_greeting
+from .ai_agent import extract_call_summary, generate_greeting
 from .config import get_settings
 from .db import Database
 from .jambonz import (
@@ -19,6 +19,7 @@ from .jambonz import (
     welcome_verbs,
 )
 from .notifier import notify_wecom
+from .summary import fallback_summary, inbox_status, parse_summary_result
 
 
 logging.basicConfig(level=logging.INFO)
@@ -53,6 +54,13 @@ class MerchantIn(BaseModel):
     enabled: bool = True
 
 
+class SimulatedCallResultIn(BaseModel):
+    call_sid: str = Field(min_length=1)
+    from_number: str = Field(default="")
+    to_number: str = Field(default="")
+    transcript: str = Field(min_length=1)
+
+
 async def _json_payload(request: Request) -> dict[str, Any]:
     try:
         payload = await request.json()
@@ -61,6 +69,74 @@ async def _json_payload(request: Request) -> dict[str, Any]:
     if not isinstance(payload, dict):
         return {}
     return payload
+
+
+def _inbox_title(summary: dict[str, Any]) -> str:
+    intent = summary.get("intent")
+    if intent == "spam":
+        return "疑似骚扰来电"
+    if intent == "appointment":
+        return "预约意向"
+    if intent == "urgent":
+        return "紧急事项"
+    return "有效来电"
+
+
+async def _store_call_result(
+    call_sid: str,
+    merchant: dict[str, Any],
+    transcript: str,
+    source: str,
+) -> dict[str, Any]:
+    db.insert_transcript(
+        {
+            "call_sid": call_sid,
+            "merchant_id": merchant["merchant_id"],
+            "transcript": transcript,
+            "source": source,
+        }
+    )
+
+    raw_extract = None
+    if settings.use_ai_extract:
+        raw_extract = await extract_call_summary(
+            settings.ai_agent_url,
+            merchant["merchant_name"],
+            transcript,
+            settings.ai_timeout_seconds,
+        )
+
+    summary = parse_summary_result(raw_extract, transcript)
+    summary["call_sid"] = call_sid
+    summary["merchant_id"] = merchant["merchant_id"]
+    summary["raw_result"] = raw_extract or json.dumps(fallback_summary(transcript), ensure_ascii=False)
+    summary_id = db.insert_summary(summary)
+
+    title = _inbox_title(summary)
+    status = inbox_status(summary)
+    inbox_id = db.insert_inbox_item(
+        {
+            "merchant_id": merchant["merchant_id"],
+            "call_sid": call_sid,
+            "title": title,
+            "body": summary.get("summary") or transcript[:120],
+            "priority": summary.get("priority", "normal"),
+            "status": status,
+            "need_human_followup": summary.get("need_human_followup", False),
+        }
+    )
+
+    return {
+        "summary_id": summary_id,
+        "inbox_item_id": inbox_id,
+        "summary": summary,
+        "inbox": {
+            "title": title,
+            "status": status,
+            "priority": summary.get("priority", "normal"),
+            "need_human_followup": summary.get("need_human_followup", False),
+        },
+    }
 
 
 @app.get("/health")
@@ -168,3 +244,54 @@ async def listen_complete(request: Request) -> dict[str, str]:
 @app.get("/calls")
 def list_calls(limit: int = Query(default=50, ge=1, le=200)) -> dict[str, Any]:
     return {"items": db.list_calls(limit=limit)}
+
+
+@app.post("/simulate/call-result")
+async def simulate_call_result(payload: SimulatedCallResultIn) -> dict[str, Any]:
+    to_number = payload.to_number or settings.default_access_number
+    merchant = db.find_merchant_by_access_number(to_number)
+    if not merchant:
+        raise HTTPException(status_code=404, detail="unknown access number")
+
+    call = {
+        "call_sid": payload.call_sid,
+        "call_id": f"sim-{payload.call_sid}",
+        "merchant_id": merchant["merchant_id"],
+        "from_number": payload.from_number,
+        "to_number": to_number,
+        "call_status": "completed",
+        "direction": "inbound",
+        "raw_payload": json.dumps(payload.model_dump(), ensure_ascii=False),
+    }
+    db.insert_call(call)
+    result = await _store_call_result(payload.call_sid, merchant, payload.transcript, "simulated")
+    return {"status": "ok", "call_sid": payload.call_sid, **result}
+
+
+@app.get("/inbox")
+def list_inbox(
+    merchant_id: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+) -> dict[str, Any]:
+    target_merchant_id = merchant_id or settings.default_merchant_id
+    return {"items": db.list_inbox_items(target_merchant_id, limit=limit)}
+
+
+@app.get("/digests/preview")
+def digest_preview(
+    merchant_id: str | None = None,
+    limit: int = Query(default=100, ge=1, le=500),
+) -> dict[str, Any]:
+    target_merchant_id = merchant_id or settings.default_merchant_id
+    items = db.list_pending_digest_items(target_merchant_id, limit=limit)
+    urgent_count = sum(1 for item in items if item["priority"] == "urgent")
+    followup_count = sum(1 for item in items if item["need_human_followup"])
+    spam_count = sum(1 for item in items if item["status"] == "filtered")
+    return {
+        "merchant_id": target_merchant_id,
+        "total": len(items),
+        "urgent_count": urgent_count,
+        "followup_count": followup_count,
+        "spam_count": spam_count,
+        "items": items,
+    }

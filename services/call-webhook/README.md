@@ -40,6 +40,7 @@ http://127.0.0.1:8000
 | `ROSIE_PUBLIC_BASE_URL` | 空 | 未来生成 actionHook 使用 |
 | `ROSIE_WECOM_WEBHOOK_URL` | 空 | 可选企业微信机器人通知 |
 | `ROSIE_USE_AI_GREETING` | `false` | 是否调用 `ai-agent` 生成欢迎语 |
+| `ROSIE_USE_AI_EXTRACT` | `false` | 是否调用 `ai-agent /extract` 生成来电摘要，关闭时使用本地规则兜底 |
 | `ROSIE_AI_AGENT_URL` | `http://127.0.0.1:8010` | ai-agent 地址 |
 | `ROSIE_AI_TIMEOUT_SECONDS` | `10` | 调用 ai-agent 超时时间 |
 | `ROSIE_REALTIME_LISTEN_ENABLED` | `false` | 是否启用 jambonz 实时音频 websocket |
@@ -145,6 +146,47 @@ curl -X POST http://127.0.0.1:8000/webhooks/jambonz/call ^
 ```bash
 curl http://127.0.0.1:8000/calls
 ```
+
+## 业务层 MVP：模拟转写到收件箱
+
+真实 PSTN 线路和 STT 未就绪时，可以用文本模拟一通来电结果。服务会写入：
+
+- `calls`
+- `call_transcripts`
+- `call_summaries`
+- `inbox_items`
+
+```bash
+curl -X POST http://127.0.0.1:8000/simulate/call-result \
+  -H "Content-Type: application/json" \
+  -d '{
+    "call_sid": "sim-call-1",
+    "from_number": "+8613811112222",
+    "to_number": "8613736849910",
+    "transcript": "你好，我想预约明天下午三点剪头发，我姓王。"
+  }'
+```
+
+查看小程序收件箱数据：
+
+```bash
+curl http://127.0.0.1:8000/inbox
+```
+
+预览待汇总内容：
+
+```bash
+curl http://127.0.0.1:8000/digests/preview
+```
+
+如果配置：
+
+```env
+ROSIE_USE_AI_EXTRACT=true
+ROSIE_AI_AGENT_URL=http://127.0.0.1:8010
+```
+
+则摘要优先走 `ai-agent /extract`；失败时自动降级到本地规则。
 
 ## 新增商家幕后接入号
 

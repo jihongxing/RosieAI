@@ -45,3 +45,29 @@ async def generate_greeting(
     reply = str(data.get("reply", "")).strip()
     return reply or None
 
+
+async def extract_call_summary(
+    ai_agent_url: str | None,
+    merchant_name: str,
+    transcript: str,
+    timeout_seconds: float,
+) -> str | None:
+    if not ai_agent_url:
+        return None
+
+    payload = {
+        "merchant_name": merchant_name,
+        "transcript": transcript,
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(timeout_seconds)) as client:
+            response = await client.post(f"{ai_agent_url.rstrip('/')}/extract", json=payload)
+            response.raise_for_status()
+            data = response.json()
+    except httpx.HTTPError as exc:
+        logger.warning("ai extract failed: %s", exc)
+        return None
+
+    result = str(data.get("result", "")).strip()
+    return result or None

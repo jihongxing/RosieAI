@@ -43,6 +43,54 @@ CREATE TABLE IF NOT EXISTS call_events (
     raw_payload TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS call_transcripts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    call_sid TEXT NOT NULL,
+    merchant_id TEXT,
+    transcript TEXT NOT NULL,
+    source TEXT NOT NULL DEFAULT 'manual',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_call_transcripts_call_sid ON call_transcripts(call_sid);
+
+CREATE TABLE IF NOT EXISTS call_summaries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    call_sid TEXT NOT NULL,
+    merchant_id TEXT,
+    summary TEXT,
+    customer_name TEXT,
+    customer_phone TEXT,
+    intent TEXT,
+    appointment_time TEXT,
+    service TEXT,
+    priority TEXT NOT NULL DEFAULT 'normal',
+    need_human_followup INTEGER NOT NULL DEFAULT 0,
+    raw_result TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_call_summaries_call_sid ON call_summaries(call_sid);
+CREATE INDEX IF NOT EXISTS idx_call_summaries_merchant ON call_summaries(merchant_id);
+
+CREATE TABLE IF NOT EXISTS inbox_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    merchant_id TEXT NOT NULL,
+    call_sid TEXT NOT NULL,
+    item_type TEXT NOT NULL DEFAULT 'call_summary',
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    priority TEXT NOT NULL DEFAULT 'normal',
+    status TEXT NOT NULL DEFAULT 'new',
+    need_human_followup INTEGER NOT NULL DEFAULT 0,
+    digest_status TEXT NOT NULL DEFAULT 'pending',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_inbox_items_merchant ON inbox_items(merchant_id, id);
+CREATE INDEX IF NOT EXISTS idx_inbox_items_digest ON inbox_items(merchant_id, digest_status);
 """
 
 
@@ -129,6 +177,18 @@ class Database:
             ).fetchone()
         return dict(row) if row else None
 
+    def find_merchant_by_id(self, merchant_id: str) -> dict[str, Any] | None:
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT merchant_id, merchant_name, access_number, original_number, transfer_phone
+                FROM merchants
+                WHERE merchant_id = ? AND enabled = 1
+                """,
+                (merchant_id,),
+            ).fetchone()
+        return dict(row) if row else None
+
     def list_merchants(self) -> list[dict[str, Any]]:
         with self.connect() as conn:
             rows = conn.execute(
@@ -164,6 +224,21 @@ class Database:
             )
             return int(cursor.lastrowid)
 
+    def find_call_by_sid(self, call_sid: str) -> dict[str, Any] | None:
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT id, call_sid, call_id, merchant_id, from_number, to_number,
+                       call_status, direction, created_at
+                FROM calls
+                WHERE call_sid = ?
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (call_sid,),
+            ).fetchone()
+        return dict(row) if row else None
+
     def insert_event(self, event: dict[str, Any]) -> int:
         with self.connect() as conn:
             cursor = conn.execute(
@@ -179,6 +254,103 @@ class Database:
                 ),
             )
             return int(cursor.lastrowid)
+
+    def insert_transcript(self, transcript: dict[str, Any]) -> int:
+        with self.connect() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO call_transcripts (call_sid, merchant_id, transcript, source)
+                VALUES (?, ?, ?, ?)
+                """,
+                (
+                    transcript["call_sid"],
+                    transcript.get("merchant_id"),
+                    transcript["transcript"],
+                    transcript.get("source", "manual"),
+                ),
+            )
+            return int(cursor.lastrowid)
+
+    def insert_summary(self, summary: dict[str, Any]) -> int:
+        with self.connect() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO call_summaries (
+                    call_sid, merchant_id, summary, customer_name, customer_phone,
+                    intent, appointment_time, service, priority, need_human_followup,
+                    raw_result
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    summary["call_sid"],
+                    summary.get("merchant_id"),
+                    summary.get("summary"),
+                    summary.get("customer_name"),
+                    summary.get("customer_phone"),
+                    summary.get("intent"),
+                    summary.get("appointment_time"),
+                    summary.get("service"),
+                    summary.get("priority", "normal"),
+                    1 if summary.get("need_human_followup") else 0,
+                    summary.get("raw_result", "{}"),
+                ),
+            )
+            return int(cursor.lastrowid)
+
+    def insert_inbox_item(self, item: dict[str, Any]) -> int:
+        with self.connect() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO inbox_items (
+                    merchant_id, call_sid, item_type, title, body, priority,
+                    status, need_human_followup, digest_status
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    item["merchant_id"],
+                    item["call_sid"],
+                    item.get("item_type", "call_summary"),
+                    item["title"],
+                    item["body"],
+                    item.get("priority", "normal"),
+                    item.get("status", "new"),
+                    1 if item.get("need_human_followup") else 0,
+                    item.get("digest_status", "pending"),
+                ),
+            )
+            return int(cursor.lastrowid)
+
+    def list_inbox_items(self, merchant_id: str, limit: int = 50) -> list[dict[str, Any]]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, merchant_id, call_sid, item_type, title, body, priority,
+                       status, need_human_followup, digest_status, created_at
+                FROM inbox_items
+                WHERE merchant_id = ?
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (merchant_id, limit),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def list_pending_digest_items(self, merchant_id: str, limit: int = 100) -> list[dict[str, Any]]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, merchant_id, call_sid, item_type, title, body, priority,
+                       status, need_human_followup, digest_status, created_at
+                FROM inbox_items
+                WHERE merchant_id = ? AND digest_status = 'pending'
+                ORDER BY id ASC
+                LIMIT ?
+                """,
+                (merchant_id, limit),
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def list_calls(self, limit: int = 50) -> list[dict[str, Any]]:
         with self.connect() as conn:
