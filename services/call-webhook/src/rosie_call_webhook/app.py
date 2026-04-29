@@ -19,7 +19,7 @@ from .jambonz import (
     welcome_verbs,
 )
 from .notifier import notify_wecom
-from .summary import fallback_summary, inbox_status, parse_summary_result
+from .summary import build_digest_text, fallback_summary, inbox_status, parse_summary_result
 
 
 logging.basicConfig(level=logging.INFO)
@@ -293,5 +293,6 @@ def digest_preview(
         "urgent_count": urgent_count,
         "followup_count": followup_count,
         "spam_count": spam_count,
+        "digest_text": build_digest_text(items),
         "items": items,
     }

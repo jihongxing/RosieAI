@@ -120,6 +120,7 @@ def test_simulated_call_result_creates_inbox_item():
         assert response.status_code == 200
         body = response.json()
         assert body["summary"]["intent"] == "appointment"
+        assert body["summary"]["appointment_time"] == "明天下午三点"
         assert body["inbox"]["status"] == "needs_review"
 
         inbox_response = client.get("/inbox")
@@ -147,3 +148,32 @@ def test_digest_preview_counts_pending_items():
         body = response.json()
         assert body["total"] >= 1
         assert body["spam_count"] >= 1
+        assert "Rosie 今日帮你整理了" in body["digest_text"]
+
+
+def test_simulated_call_result_is_idempotent_by_call_sid():
+    with TestClient(app) as client:
+        payload = {
+            "call_sid": "sim-call-idempotent",
+            "from_number": "+8613811115555",
+            "to_number": "8613736849910",
+            "transcript": "你好，我想预约明天下午三点剪头发。",
+        }
+        first_response = client.post("/simulate/call-result", json=payload)
+        second_response = client.post(
+            "/simulate/call-result",
+            json={**payload, "transcript": "你好，我想预约明天下午四点剪头发。"},
+        )
+
+        assert first_response.status_code == 200
+        assert second_response.status_code == 200
+        assert first_response.json()["inbox_item_id"] == second_response.json()["inbox_item_id"]
+
+        inbox_response = client.get("/inbox")
+        items = [
+            item
+            for item in inbox_response.json()["items"]
+            if item["call_sid"] == "sim-call-idempotent"
+        ]
+        assert len(items) == 1
+        assert "四点" in items[0]["body"]

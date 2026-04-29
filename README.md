@@ -72,6 +72,8 @@ curl http://127.0.0.1:8000/inbox
 curl http://127.0.0.1:8000/digests/preview
 ```
 
+同一个 `call_sid` 重复提交会更新原收件箱条目，不会重复生成待处理事项。`/digests/preview` 会返回 `digest_text`，可作为后续每日汇总通知的正文雏形。
+
 ## 当前 jambonz 测试信息
 
 ```text

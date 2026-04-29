@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS call_events (
 
 CREATE TABLE IF NOT EXISTS call_transcripts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    call_sid TEXT NOT NULL,
+    call_sid TEXT NOT NULL UNIQUE,
     merchant_id TEXT,
     transcript TEXT NOT NULL,
     source TEXT NOT NULL DEFAULT 'manual',
@@ -57,7 +57,7 @@ CREATE INDEX IF NOT EXISTS idx_call_transcripts_call_sid ON call_transcripts(cal
 
 CREATE TABLE IF NOT EXISTS call_summaries (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    call_sid TEXT NOT NULL,
+    call_sid TEXT NOT NULL UNIQUE,
     merchant_id TEXT,
     summary TEXT,
     customer_name TEXT,
@@ -77,7 +77,7 @@ CREATE INDEX IF NOT EXISTS idx_call_summaries_merchant ON call_summaries(merchan
 CREATE TABLE IF NOT EXISTS inbox_items (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     merchant_id TEXT NOT NULL,
-    call_sid TEXT NOT NULL,
+    call_sid TEXT NOT NULL UNIQUE,
     item_type TEXT NOT NULL DEFAULT 'call_summary',
     title TEXT NOT NULL,
     body TEXT NOT NULL,
@@ -106,6 +106,9 @@ class Database:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as conn:
             conn.executescript(SCHEMA)
+            self._ensure_unique_index(conn, "idx_call_transcripts_call_sid_unique", "call_transcripts", "call_sid")
+            self._ensure_unique_index(conn, "idx_call_summaries_call_sid_unique", "call_summaries", "call_sid")
+            self._ensure_unique_index(conn, "idx_inbox_items_call_sid_unique", "inbox_items", "call_sid")
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
@@ -116,6 +119,28 @@ class Database:
             conn.commit()
         finally:
             conn.close()
+
+    def _ensure_unique_index(
+        self,
+        conn: sqlite3.Connection,
+        index_name: str,
+        table_name: str,
+        column_name: str,
+    ) -> None:
+        rows = conn.execute(
+            f"""
+            SELECT {column_name}, MIN(id) AS keep_id
+            FROM {table_name}
+            GROUP BY {column_name}
+            HAVING COUNT(*) > 1
+            """
+        ).fetchall()
+        for row in rows:
+            conn.execute(
+                f"DELETE FROM {table_name} WHERE {column_name} = ? AND id <> ?",
+                (row[column_name], row["keep_id"]),
+            )
+        conn.execute(f"CREATE UNIQUE INDEX IF NOT EXISTS {index_name} ON {table_name}({column_name})")
 
     def upsert_default_merchant(
         self,
@@ -203,6 +228,32 @@ class Database:
 
     def insert_call(self, call: dict[str, Any]) -> int:
         with self.connect() as conn:
+            existing = conn.execute(
+                "SELECT id FROM calls WHERE call_sid = ? ORDER BY id DESC LIMIT 1",
+                (call.get("call_sid"),),
+            ).fetchone()
+            if existing:
+                conn.execute(
+                    """
+                    UPDATE calls
+                    SET call_id = ?, merchant_id = ?, from_number = ?, to_number = ?,
+                        call_status = ?, direction = ?, raw_payload = ?,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                    """,
+                    (
+                        call.get("call_id"),
+                        call.get("merchant_id"),
+                        call.get("from_number"),
+                        call.get("to_number"),
+                        call.get("call_status"),
+                        call.get("direction"),
+                        call.get("raw_payload"),
+                        existing["id"],
+                    ),
+                )
+                return int(existing["id"])
+
             cursor = conn.execute(
                 """
                 INSERT INTO calls (
@@ -222,7 +273,11 @@ class Database:
                     call.get("raw_payload"),
                 ),
             )
-            return int(cursor.lastrowid)
+            row = conn.execute(
+                "SELECT id FROM calls WHERE call_sid = ? ORDER BY id DESC LIMIT 1",
+                (call.get("call_sid"),),
+            ).fetchone()
+            return int(row["id"] if row else cursor.lastrowid)
 
     def find_call_by_sid(self, call_sid: str) -> dict[str, Any] | None:
         with self.connect() as conn:
@@ -261,6 +316,10 @@ class Database:
                 """
                 INSERT INTO call_transcripts (call_sid, merchant_id, transcript, source)
                 VALUES (?, ?, ?, ?)
+                ON CONFLICT(call_sid) DO UPDATE SET
+                    merchant_id = excluded.merchant_id,
+                    transcript = excluded.transcript,
+                    source = excluded.source
                 """,
                 (
                     transcript["call_sid"],
@@ -269,7 +328,11 @@ class Database:
                     transcript.get("source", "manual"),
                 ),
             )
-            return int(cursor.lastrowid)
+            row = conn.execute(
+                "SELECT id FROM call_transcripts WHERE call_sid = ?",
+                (transcript["call_sid"],),
+            ).fetchone()
+            return int(row["id"] if row else cursor.lastrowid)
 
     def insert_summary(self, summary: dict[str, Any]) -> int:
         with self.connect() as conn:
@@ -281,6 +344,17 @@ class Database:
                     raw_result
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(call_sid) DO UPDATE SET
+                    merchant_id = excluded.merchant_id,
+                    summary = excluded.summary,
+                    customer_name = excluded.customer_name,
+                    customer_phone = excluded.customer_phone,
+                    intent = excluded.intent,
+                    appointment_time = excluded.appointment_time,
+                    service = excluded.service,
+                    priority = excluded.priority,
+                    need_human_followup = excluded.need_human_followup,
+                    raw_result = excluded.raw_result
                 """,
                 (
                     summary["call_sid"],
@@ -296,7 +370,11 @@ class Database:
                     summary.get("raw_result", "{}"),
                 ),
             )
-            return int(cursor.lastrowid)
+            row = conn.execute(
+                "SELECT id FROM call_summaries WHERE call_sid = ?",
+                (summary["call_sid"],),
+            ).fetchone()
+            return int(row["id"] if row else cursor.lastrowid)
 
     def insert_inbox_item(self, item: dict[str, Any]) -> int:
         with self.connect() as conn:
@@ -307,6 +385,16 @@ class Database:
                     status, need_human_followup, digest_status
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(call_sid) DO UPDATE SET
+                    merchant_id = excluded.merchant_id,
+                    item_type = excluded.item_type,
+                    title = excluded.title,
+                    body = excluded.body,
+                    priority = excluded.priority,
+                    status = excluded.status,
+                    need_human_followup = excluded.need_human_followup,
+                    digest_status = 'pending',
+                    updated_at = CURRENT_TIMESTAMP
                 """,
                 (
                     item["merchant_id"],
@@ -320,7 +408,11 @@ class Database:
                     item.get("digest_status", "pending"),
                 ),
             )
-            return int(cursor.lastrowid)
+            row = conn.execute(
+                "SELECT id FROM inbox_items WHERE call_sid = ?",
+                (item["call_sid"],),
+            ).fetchone()
+            return int(row["id"] if row else cursor.lastrowid)
 
     def list_inbox_items(self, merchant_id: str, limit: int = 50) -> list[dict[str, Any]]:
         with self.connect() as conn:

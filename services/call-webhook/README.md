@@ -179,6 +179,8 @@ curl http://127.0.0.1:8000/inbox
 curl http://127.0.0.1:8000/digests/preview
 ```
 
+`/digests/preview` 会返回 `digest_text`，用于预览每日汇总正文。同一个 `call_sid` 重复提交时会更新原有 transcript、summary 和 inbox item，避免重试造成重复待办。
+
 如果配置：
 
 ```env
