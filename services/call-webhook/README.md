@@ -179,7 +179,14 @@ curl http://127.0.0.1:8000/inbox
 curl http://127.0.0.1:8000/digests/preview
 ```
 
-`/digests/preview` 会返回 `digest_text`，用于预览每日汇总正文。同一个 `call_sid` 重复提交时会更新原有 transcript、summary 和 inbox item，避免重试造成重复待办。
+生成正式汇总：
+
+```bash
+curl -X POST http://127.0.0.1:8000/digests/generate
+curl http://127.0.0.1:8000/digests
+```
+
+`/digests/preview` 会返回 `digest_text`，用于预览每日汇总正文。同一个 `call_sid` 重复提交时会更新原有 transcript、summary 和 inbox item，避免重试造成重复待办。`/digests/generate` 会把本批收件箱条目标记为 `digested`，后续预览不会重复汇总。
 
 如果配置：
 

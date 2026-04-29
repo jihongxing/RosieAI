@@ -296,3 +296,52 @@ def digest_preview(
         "digest_text": build_digest_text(items),
         "items": items,
     }
+
+
+@app.post("/digests/generate")
+def generate_digest(
+    merchant_id: str | None = None,
+    digest_type: str = "daily",
+    limit: int = Query(default=100, ge=1, le=500),
+) -> dict[str, Any]:
+    target_merchant_id = merchant_id or settings.default_merchant_id
+    items = db.list_pending_digest_items(target_merchant_id, limit=limit)
+    urgent_count = sum(1 for item in items if item["priority"] == "urgent")
+    followup_count = sum(1 for item in items if item["need_human_followup"])
+    spam_count = sum(1 for item in items if item["status"] == "filtered")
+    item_ids = [int(item["id"]) for item in items]
+    digest_text = build_digest_text(items)
+    digest_id = db.insert_digest(
+        {
+            "merchant_id": target_merchant_id,
+            "digest_type": digest_type,
+            "item_count": len(items),
+            "urgent_count": urgent_count,
+            "followup_count": followup_count,
+            "spam_count": spam_count,
+            "digest_text": digest_text,
+            "item_ids": json.dumps(item_ids),
+        }
+    )
+    db.mark_inbox_items_digested(item_ids)
+    return {
+        "status": "ok",
+        "digest_id": digest_id,
+        "merchant_id": target_merchant_id,
+        "digest_type": digest_type,
+        "total": len(items),
+        "urgent_count": urgent_count,
+        "followup_count": followup_count,
+        "spam_count": spam_count,
+        "digest_text": digest_text,
+        "item_ids": item_ids,
+    }
+
+
+@app.get("/digests")
+def list_digests(
+    merchant_id: str | None = None,
+    limit: int = Query(default=20, ge=1, le=100),
+) -> dict[str, Any]:
+    target_merchant_id = merchant_id or settings.default_merchant_id
+    return {"items": db.list_digests(target_merchant_id, limit=limit)}

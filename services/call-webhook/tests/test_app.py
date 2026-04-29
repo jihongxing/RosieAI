@@ -177,3 +177,34 @@ def test_simulated_call_result_is_idempotent_by_call_sid():
         ]
         assert len(items) == 1
         assert "四点" in items[0]["body"]
+
+
+def test_generate_digest_marks_items_as_digested():
+    with TestClient(app) as client:
+        client.post(
+            "/simulate/call-result",
+            json={
+                "call_sid": "sim-call-digest-generate",
+                "from_number": "+8613811116666",
+                "to_number": "8613736849910",
+                "transcript": "你好，我想预约明天下午三点剪头发。",
+            },
+        )
+
+        response = client.post("/digests/generate")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["total"] >= 1
+        assert "sim-call-digest-generate" in str(body["item_ids"]) or body["item_ids"]
+
+        preview_response = client.get("/digests/preview")
+        assert preview_response.status_code == 200
+        pending_ids = [item["id"] for item in preview_response.json()["items"]]
+        assert not any(item_id in pending_ids for item_id in body["item_ids"])
+
+        digests_response = client.get("/digests")
+        assert digests_response.status_code == 200
+        digests = digests_response.json()["items"]
+        assert digests[0]["id"] == body["digest_id"]
+        assert "Rosie 今日帮你整理了" in digests[0]["digest_text"]

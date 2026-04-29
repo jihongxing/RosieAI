@@ -91,6 +91,22 @@ CREATE TABLE IF NOT EXISTS inbox_items (
 
 CREATE INDEX IF NOT EXISTS idx_inbox_items_merchant ON inbox_items(merchant_id, id);
 CREATE INDEX IF NOT EXISTS idx_inbox_items_digest ON inbox_items(merchant_id, digest_status);
+
+CREATE TABLE IF NOT EXISTS digests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    merchant_id TEXT NOT NULL,
+    digest_type TEXT NOT NULL DEFAULT 'daily',
+    item_count INTEGER NOT NULL DEFAULT 0,
+    urgent_count INTEGER NOT NULL DEFAULT 0,
+    followup_count INTEGER NOT NULL DEFAULT 0,
+    spam_count INTEGER NOT NULL DEFAULT 0,
+    digest_text TEXT NOT NULL,
+    item_ids TEXT NOT NULL DEFAULT '[]',
+    status TEXT NOT NULL DEFAULT 'generated',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_digests_merchant ON digests(merchant_id, id);
 """
 
 
@@ -438,6 +454,61 @@ class Database:
                 FROM inbox_items
                 WHERE merchant_id = ? AND digest_status = 'pending'
                 ORDER BY id ASC
+                LIMIT ?
+                """,
+                (merchant_id, limit),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def insert_digest(self, digest: dict[str, Any]) -> int:
+        with self.connect() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO digests (
+                    merchant_id, digest_type, item_count, urgent_count,
+                    followup_count, spam_count, digest_text, item_ids, status
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    digest["merchant_id"],
+                    digest.get("digest_type", "daily"),
+                    digest.get("item_count", 0),
+                    digest.get("urgent_count", 0),
+                    digest.get("followup_count", 0),
+                    digest.get("spam_count", 0),
+                    digest["digest_text"],
+                    digest.get("item_ids", "[]"),
+                    digest.get("status", "generated"),
+                ),
+            )
+            return int(cursor.lastrowid)
+
+    def mark_inbox_items_digested(self, item_ids: list[int]) -> None:
+        if not item_ids:
+            return
+        placeholders = ",".join("?" for _ in item_ids)
+        with self.connect() as conn:
+            conn.execute(
+                f"""
+                UPDATE inbox_items
+                SET digest_status = 'digested',
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id IN ({placeholders})
+                """,
+                item_ids,
+            )
+
+    def list_digests(self, merchant_id: str, limit: int = 20) -> list[dict[str, Any]]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, merchant_id, digest_type, item_count, urgent_count,
+                       followup_count, spam_count, digest_text, item_ids,
+                       status, created_at
+                FROM digests
+                WHERE merchant_id = ?
+                ORDER BY id DESC
                 LIMIT ?
                 """,
                 (merchant_id, limit),
