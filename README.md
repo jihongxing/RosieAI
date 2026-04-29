@@ -30,4 +30,28 @@ Phase 2 当前目标：
 |------|------|------|
 | call-webhook | 8000 | jambonz 呼入 webhook |
 | ai-agent | 8010 | 本地 LLM Agent API |
+| realtime-voice | 8020 | jambonz 实时音频 WebSocket |
 
+## Phase 3 外部联调辅助脚本
+
+配置 call-webhook 的 AI greeting 和 realtime listen：
+
+```bash
+cd /opt/RosieAI
+bash ops/configure-call-webhook-realtime.sh 服务器公网IP
+cd services/call-webhook
+docker compose up -d --build
+```
+
+检查公网端口、webhook verbs 和 realtime sessions：
+
+```bash
+cd /opt/RosieAI
+bash ops/check-phase3-realtime.sh 服务器公网IP
+```
+
+详细配置见：
+
+```text
+docs/Rosie AI jambonz 外部联调指南.md
+```
