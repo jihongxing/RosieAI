@@ -276,5 +276,6 @@ realtime-voice -> STT -> ai-agent -> TTS -> WebSocket audio out
 在此之前，研发下一步是：
 
 ```text
-模拟转写文本 -> ai-agent /extract -> 通话摘要 -> 结构化信息 -> 商家通知
+已完成：模拟转写文本 -> ai-agent /extract -> 通话摘要 -> 结构化信息 -> 收件箱 -> 汇总预览 -> 汇总生成
+下一步：定时汇总触发器 -> 通知发送日志 -> 微信订阅消息 -> 小程序收件箱页面
 ```

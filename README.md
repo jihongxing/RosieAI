@@ -15,7 +15,8 @@ RosieAI 只做接电话，不做主动外拨电话，不做电销系统。
 
 - `docs/`：需求文档、技术方案、项目实施计划。
 - `services/call-webhook/`：Phase 1 最小通信 webhook，接收 jambonz 呼入回调。
-- `services/ai-agent/`：Phase 2 本地 LLM MVP，默认对接 Ollama + Qwen3。
+- `services/ai-agent/`：Phase 2 LLM MVP，当前服务器默认走 DeepSeek / OpenAI-compatible API，本地 Qwen 作为后续资源充足后的降本方向。
+- `services/realtime-voice/`：Phase 3 实时音频 WebSocket 骨架，当前用于验证 jambonz `listen` 音频入口。
 
 ## 当前推进阶段
 
@@ -28,11 +29,18 @@ Phase 1 通信技术链路已完成：
 - 公网 `call-webhook -> ai-agent -> realtime listen verbs` 已验证。
 - 真实 PSTN 入站依赖 SIP Trunk / DID / 运营商线路资源，当前归类为商务前置项，不再阻塞业务层 MVP 开发。
 
+2026-04-29 当前检查点：
+
+- 业务层 MVP 已跑通模拟链路：模拟转写文本 -> AI 结构化摘要 -> 小程序收件箱数据 -> 汇总预览 -> 正式汇总生成。
+- `call_sid` 幂等已完成，同一通电话重复提交会更新原摘要和收件箱条目，不会重复进入待办。
+- 通知偏好 API 已完成，默认策略为每日 20:00 汇总、实时通知关闭、紧急实时提醒开启。
+- 真实 PSTN 入站仍等待 SIP Trunk / DID / IMS 线路资源，当前不阻塞业务层开发。
+
 下一步研发目标：
 
-- 建立通话会话、转写、摘要和结构化信息模型。
-- 接入 AI 摘要与来电意图识别。
-- 先完成小程序收件箱、定时汇总和关键事项提醒闭环。
+- 增加定时汇总触发器，例如 `POST /internal/digest-tick`，由服务器 cron 每分钟调用。
+- 抽象通知发送日志和发送通道，先记录待发送，再接微信订阅消息。
+- 建立小程序收件箱、汇总历史、通知偏好页面。
 - STT / TTS / Pipecat 在真实线路资源就绪后继续联调。
 
 ## 通知策略
@@ -91,6 +99,19 @@ curl -X PUT http://127.0.0.1:8000/notification-preferences \
     "team_wecom_enabled": false,
     "sms_fallback_enabled": false
   }'
+```
+
+默认通知偏好：
+
+```json
+{
+  "digest_mode": "daily",
+  "digest_times": ["20:00"],
+  "realtime_enabled": false,
+  "urgent_realtime_enabled": true,
+  "team_wecom_enabled": false,
+  "sms_fallback_enabled": false
+}
 ```
 
 ## 当前 jambonz 测试信息
