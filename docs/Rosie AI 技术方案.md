@@ -179,9 +179,17 @@ Pipecat 的价值：
 | 数据库 | 自建 PostgreSQL | 腾讯云 / 阿里云 / 华为云托管 PostgreSQL | MVP 自建，商业化可托管 |
 | 缓存 | 自建 Valkey / Redis | 云厂商托管 Redis | 自建省钱，托管省心 |
 | 小程序支付 | 微信小程序 + 微信支付 | 无 | 中国区主入口 |
-| 通知 | 微信订阅消息 + 企业微信机器人 | 钉钉、短信兜底 | 避免短信成为主要成本 |
+| 通知 | 企业微信群机器人 Webhook | 企业微信应用 / 客服、微信订阅消息、钉钉、短信兜底 | MVP 优先企业微信机器人，避免订阅消息授权和短信成本成为瓶颈 |
 | 通信线路 | 三大运营商政企 IMS / SIP 语音专线 | 有资质线路集成商 | 必须签清楚 SLA，并验证条件呼叫转移到 Rosie 幕后接入号 |
 | 短信 | 腾讯云短信 | 阿里云短信、华为云短信 | 仅用于必要兜底 |
+
+企业微信通知选型：
+
+- Phase 2 先使用企业微信群机器人 Webhook，发送来电摘要、预约、骚扰拦截和异常告警。
+- 群机器人主要是单向通知能力，不承载复杂指令和会话状态。
+- 续费、咨询业务、指令处理、跳转小程序等双向交互，Phase 3 后通过企业微信应用 / 客服能力、小程序链接或小程序码承接。
+- 群机器人需要做发送限频、合并通知、失败重试和告警。当前公开资料常见口径为单机器人约 20 条/分钟，生产以企业微信官方后台和接口返回为准。
+- 企业微信“客户 / 外部联系人数量”不是群机器人能力。公开资料常见口径为单成员默认约 5000，可随认证、付费或申请扩容提升；生产以企业微信当前官方规则和账号后台显示为准。
 
 通信线路采购建议：
 
@@ -209,7 +217,7 @@ Pipecat 的价值：
 - 通信供应商通过 Carrier Adapter 抽象。
 - 中国区用微信小程序。
 - 海外版用 Web 控制台 + WhatsApp / Email / SMS。
-- 海外 SIP 先用 Twilio / Telnyx 验证，规模上来再谈本地供应商。
+- 海外 SIP / DID 只用于海外正式运营或临时兜底；当前不为验证 jambonz 基础能力单独购买海外 DID。
 
 ## 8. 最终推荐组合
 
@@ -218,7 +226,7 @@ Pipecat 的价值：
 | 模块 | 选择 |
 |------|------|
 | 云厂商 | 腾讯云 |
-| 通信 | jambonz + 测试 SIP Trunk |
+| 通信 | jambonz + Rosie webhook；真实 SIP Trunk / DID 作为商务前置项并行推进 |
 | 底层媒体 | jambonz 管理的 FreeSWITCH |
 | 实时语音 | Pipecat |
 | 数据库 | PostgreSQL 17 自建 |
@@ -266,7 +274,7 @@ Pipecat 的价值：
 8. Pipecat 执行 VAD / STT / 防骚扰 / LLM / TTS
 9. 需要预约时调用 Rosie Business API
 10. 需要转人工时通过 jambonz 执行转接
-11. 通话结束后 Rosie 生成摘要并推送微信通知
+11. 通话结束后 Rosie 生成摘要并推送企业微信群机器人通知
 ```
 
 ### 9.1 回拨约束流程
@@ -326,7 +334,7 @@ Rosie 业务后端负责产品逻辑，不负责底层 SIP 细节。
 | Call Webhook | jambonz 呼叫控制入口 |
 | Call Service | 通话生命周期、录音、转写、摘要 |
 | Appointment Service | 时间槽、预约、冲突检测 |
-| Notification Service | 微信、企业微信、钉钉、短信兜底 |
+| Notification Service | 企业微信群机器人、企业微信应用 / 客服、微信订阅消息、钉钉、短信兜底 |
 | Voice Profile Service | 声音样本授权、克隆音色、启停 |
 | Admin Service | 运营后台、异常处理 |
 
@@ -615,36 +623,39 @@ AI 指标：
 
 ### Week 1：jambonz 通信 POC
 
-- 部署 jambonz。
-- 对接测试 SIP Trunk。
-- 配置一个 Rosie 测试幕后接入号。
+- 部署并配置 jambonz Application。
 - 实现 Rosie Call Webhook。
-- 跑通接听、播放、挂断、转人工。
+- 跑通公网 health、AI greeting、接入号映射和 `say + listen` verbs。
+- 将真实 PSTN 入站转为 SIP Trunk / DID / IMS 商务前置项。
+- 不再为了验证 jambonz 基础能力单独购买海外 DID。
 
-### Week 2：Pipecat AI 链路
+### Week 2：业务层 MVP
+
+- 建立通话转写、摘要、意图和待办数据结构。
+- 增加模拟转写入口。
+- 调用 AI 提取来电摘要和结构化字段。
+- 输出通话详情接口。
+- 接入企业微信群机器人通知。
+
+### Week 3：实时 AI 链路
 
 - 部署 Pipecat Agent。
 - 接入 jambonz 媒体流。
 - 部署 FunASR / SenseVoice。
-- 接入 Qwen3。
+- 接入 Qwen3 / DeepSeek 兜底。
 - 接入 Fun-CosyVoice。
 
-### Week 3：业务闭环
+### Week 4：产品闭环
 
 - 商家配置。
-- 号码映射。
 - 防骚扰规则。
 - 预约规则。
 - 通话记录。
-- 微信 / 企业微信通知。
-
-### Week 4：可试点版本
-
+- 企业微信群机器人通知，微信订阅消息 / 钉钉 / 短信兜底。
 - 小程序基础页面。
 - 声音克隆设置入口。
 - HOMER / Prometheus / Grafana。
-- SIPp 压测。
-- 接入真实商家试点。
+- 线路资源就绪后接入真实商家试点。
 
 ## 20. 后续演进
 

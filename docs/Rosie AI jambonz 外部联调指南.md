@@ -263,10 +263,18 @@ Test-NetConnection 服务器公网IP -Port 8020
 
 ## 8. 下一步
 
-当 `/sessions` 中出现 `audio_bytes > 0` 后，进入下一阶段：
+当前判断：Rosie 侧公网 webhook、AI greeting、接入号映射和 realtime listen verbs 已经验证通过。真实手机呼入没有进入 Rosie，是因为缺少真实可入站到 jambonz 的 SIP Trunk / DID / IMS 线路资源，这属于商务前置项，不再阻塞业务层 MVP 开发。
+
+线路资源就绪后，`/sessions` 中出现 `audio_bytes > 0`，再进入实时语音联调：
 
 ```text
 realtime-voice -> STT -> ai-agent -> TTS -> WebSocket audio out
 ```
 
 也就是实时语音多轮对话。
+
+在此之前，研发下一步是：
+
+```text
+模拟转写文本 -> ai-agent /extract -> 通话摘要 -> 结构化信息 -> 商家通知
+```
