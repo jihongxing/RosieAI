@@ -37,6 +37,15 @@ Phone Number:
 
 ## 2. 服务器侧必须可访问
 
+先执行配置脚本，写入公网地址和 jambonz 测试号码：
+
+```bash
+cd /opt/RosieAI
+bash ops/configure-call-webhook-realtime.sh 119.28.50.29 8613736849910
+cd services/call-webhook
+docker compose up -d --build
+```
+
 在开发机执行：
 
 ```powershell
@@ -192,7 +201,29 @@ curl http://127.0.0.1:8020/sessions
 
 ## 7. 常见问题
 
-### 7.1 call webhook 没有日志
+### 7.1 Rosie 暂时无法识别这个接入号码
+
+说明 call webhook 已经打通，但 `to` 号码没有命中商家的幕后接入号。
+
+先重新写入测试号码并重启 call-webhook：
+
+```bash
+cd /opt/RosieAI
+bash ops/configure-call-webhook-realtime.sh 119.28.50.29 8613736849910
+cd services/call-webhook
+docker compose up -d --build
+```
+
+然后检查：
+
+```bash
+cd /opt/RosieAI
+bash ops/check-phase3-realtime.sh 119.28.50.29 8613736849910
+```
+
+预期 webhook response 里应该出现 `listen`，而不是“无法识别这个接入号码”。
+
+### 7.2 call webhook 没有日志
 
 说明 jambonz 没有打到 Rosie。
 
@@ -202,7 +233,7 @@ curl http://127.0.0.1:8020/sessions
 - 测试号码是否绑定到 Rosie MVP Application。
 - 服务器 `8000` 是否公网可访问。
 
-### 7.2 有 call webhook，但没有 realtime session
+### 7.3 有 call webhook，但没有 realtime session
 
 说明 call hook 到了，但 jambonz 没有连接 `listen` WebSocket。
 
@@ -212,7 +243,7 @@ curl http://127.0.0.1:8020/sessions
 - `8020` 是否公网可访问。
 - realtime-voice 是否运行。
 
-### 7.3 服务器访问公网 IP 不通
+### 7.4 服务器访问公网 IP 不通
 
 很多云服务器不支持访问自己的公网 IP。应该从开发机测试公网 IP。
 

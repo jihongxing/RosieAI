@@ -2,6 +2,7 @@
 set -euo pipefail
 
 PUBLIC_HOST="${1:-}"
+ACCESS_NUMBER="${2:-8613736849910}"
 if [[ -z "$PUBLIC_HOST" ]]; then
   PUBLIC_HOST="$(curl -fsS -4 ifconfig.me || true)"
 fi
@@ -27,7 +28,7 @@ echo
 echo "Webhook response:"
 curl -fsS -X POST http://127.0.0.1:8000/webhooks/jambonz/call \
   -H "Content-Type: application/json" \
-  -d "{\"callSid\":\"phase3-check\",\"from\":\"+8613811112222\",\"to\":\"8613736849910\",\"direction\":\"inbound\",\"callStatus\":\"trying\"}" \
+  -d "{\"callSid\":\"phase3-check\",\"from\":\"+8613811112222\",\"to\":\"$ACCESS_NUMBER\",\"direction\":\"inbound\",\"callStatus\":\"trying\"}" \
   && echo
 
 echo

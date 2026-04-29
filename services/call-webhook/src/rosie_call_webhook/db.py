@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from pathlib import Path
+import re
 import sqlite3
 from typing import Any, Iterator
 
@@ -45,6 +46,10 @@ CREATE TABLE IF NOT EXISTS call_events (
 """
 
 
+def normalize_access_number(value: str) -> str:
+    return re.sub(r"\D", "", value.strip())
+
+
 class Database:
     def __init__(self, path: Path) -> None:
         self.path = path
@@ -82,7 +87,7 @@ class Database:
                     transfer_phone = excluded.transfer_phone,
                     enabled = 1
                 """,
-                (merchant_id, merchant_name, access_number, transfer_phone),
+                (merchant_id, merchant_name, normalize_access_number(access_number), transfer_phone),
             )
 
     def upsert_merchant(self, merchant: dict[str, Any]) -> None:
@@ -104,7 +109,7 @@ class Database:
                 (
                     merchant["merchant_id"],
                     merchant["merchant_name"],
-                    merchant["access_number"],
+                    normalize_access_number(merchant["access_number"]),
                     merchant.get("original_number"),
                     merchant.get("transfer_phone"),
                     1 if merchant.get("enabled", True) else 0,
@@ -112,6 +117,7 @@ class Database:
             )
 
     def find_merchant_by_access_number(self, access_number: str) -> dict[str, Any] | None:
+        normalized_access_number = normalize_access_number(access_number)
         with self.connect() as conn:
             row = conn.execute(
                 """
@@ -119,7 +125,7 @@ class Database:
                 FROM merchants
                 WHERE access_number = ? AND enabled = 1
                 """,
-                (access_number,),
+                (normalized_access_number,),
             ).fetchone()
         return dict(row) if row else None
 

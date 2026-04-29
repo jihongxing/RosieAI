@@ -76,3 +76,29 @@ def test_can_add_merchant_and_route_by_access_number():
         assert response.status_code == 200
         body = response.json()
         assert "张三理发店" in body[0]["text"]
+
+
+def test_access_number_matches_with_or_without_plus_prefix():
+    with TestClient(app) as client:
+        merchant = {
+            "merchant_id": "merchant-002",
+            "merchant_name": "李四花店",
+            "access_number": "+8613736849911",
+            "enabled": True,
+        }
+        response = client.post("/merchants", json=merchant)
+        assert response.status_code == 200
+
+        response = client.post(
+            "/webhooks/jambonz/call",
+            json={
+                "callSid": "call-4",
+                "from": "+8613811112222",
+                "to": "8613736849911",
+                "callStatus": "trying",
+            },
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert "李四花店" in body[0]["text"]

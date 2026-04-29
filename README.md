@@ -45,7 +45,7 @@ Phone Number: 8613736849910
 
 ```bash
 cd /opt/RosieAI
-bash ops/configure-call-webhook-realtime.sh 服务器公网IP
+bash ops/configure-call-webhook-realtime.sh 服务器公网IP 8613736849910
 cd services/call-webhook
 docker compose up -d --build
 ```
@@ -54,7 +54,7 @@ docker compose up -d --build
 
 ```bash
 cd /opt/RosieAI
-bash ops/check-phase3-realtime.sh 服务器公网IP
+bash ops/check-phase3-realtime.sh 服务器公网IP 8613736849910
 ```
 
 详细配置见：

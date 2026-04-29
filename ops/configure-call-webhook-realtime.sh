@@ -2,9 +2,10 @@
 set -euo pipefail
 
 PUBLIC_HOST="${1:-}"
+ACCESS_NUMBER="${2:-8613736849910}"
 if [[ -z "$PUBLIC_HOST" ]]; then
-  echo "Usage: $0 <public-ip-or-domain>"
-  echo "Example: $0 119.28.50.29"
+  echo "Usage: $0 <public-ip-or-domain> [access-number]"
+  echo "Example: $0 119.28.50.29 8613736849910"
   exit 1
 fi
 
@@ -15,14 +16,16 @@ if [[ ! -f "$ENV_FILE" ]]; then
   cp "$ROOT_DIR/services/call-webhook/.env.example" "$ENV_FILE"
 fi
 
-python3 - "$ENV_FILE" "$PUBLIC_HOST" <<'PY'
+python3 - "$ENV_FILE" "$PUBLIC_HOST" "$ACCESS_NUMBER" <<'PY'
 from pathlib import Path
 import sys
 
 env_path = Path(sys.argv[1])
 public_host = sys.argv[2]
+access_number = sys.argv[3]
 
 updates = {
+    "ROSIE_DEFAULT_ACCESS_NUMBER": access_number,
     "ROSIE_USE_AI_GREETING": "true",
     "ROSIE_AI_AGENT_URL": "http://172.17.0.1:8010",
     "ROSIE_AI_TIMEOUT_SECONDS": "10",
@@ -56,8 +59,7 @@ PY
 
 echo
 echo "Current realtime settings:"
-grep -E 'ROSIE_USE_AI_GREETING|ROSIE_AI_AGENT_URL|ROSIE_REALTIME' "$ENV_FILE"
+grep -E 'ROSIE_DEFAULT_ACCESS_NUMBER|ROSIE_USE_AI_GREETING|ROSIE_AI_AGENT_URL|ROSIE_REALTIME' "$ENV_FILE"
 echo
 echo "Restart call-webhook:"
 echo "  cd $ROOT_DIR/services/call-webhook && docker compose up -d --build"
-
