@@ -1,0 +1,143 @@
+# Rosie Call Webhook MVP
+
+最小 MVP 服务，用于 Phase 1 通信 POC。
+
+目标：
+
+- 接收 jambonz inbound call webhook。
+- 根据被叫号码匹配 Rosie 幕后接入号。
+- 写入 SQLite 通话记录。
+- 返回 jambonz JSON verbs，播放固定欢迎语并挂断。
+- 接收 jambonz call status webhook。
+
+当前版本不包含 Pipecat / STT / LLM / TTS。它只验证真实电话能进入 Rosie 后端。
+
+## 快速启动
+
+```bash
+cd services/call-webhook
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+python -m rosie_call_webhook
+```
+
+服务默认监听：
+
+```text
+http://127.0.0.1:8000
+```
+
+## 环境变量
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `ROSIE_DB_PATH` | `./data/rosie_mvp.sqlite3` | SQLite 数据库路径 |
+| `ROSIE_DEFAULT_ACCESS_NUMBER` | `+8617000000000` | 测试幕后接入号，对应 jambonz payload 里的 `to` |
+| `ROSIE_DEFAULT_MERCHANT_ID` | `demo-merchant` | 测试商家 ID |
+| `ROSIE_DEFAULT_MERCHANT_NAME` | `测试商家` | 测试商家名称 |
+| `ROSIE_DEFAULT_TRANSFER_PHONE` | 空 | 后续转人工使用，当前 MVP 只保存 |
+| `ROSIE_PUBLIC_BASE_URL` | 空 | 未来生成 actionHook 使用 |
+| `ROSIE_WECOM_WEBHOOK_URL` | 空 | 可选企业微信机器人通知 |
+
+可以复制 `.env.example`：
+
+```powershell
+Copy-Item .env.example .env
+```
+
+## Docker 启动
+
+```powershell
+cd services\call-webhook
+Copy-Item .env.example .env
+docker compose up --build
+```
+
+## jambonz 配置
+
+在 jambonz application 中配置 calling webhook：
+
+```text
+POST https://your-domain/webhooks/jambonz/call
+```
+
+配置 call status webhook：
+
+```text
+POST https://your-domain/webhooks/jambonz/status
+```
+
+返回示例：
+
+```json
+[
+  {
+    "verb": "say",
+    "text": "您好，这里是测试商家的 AI 接线员 Rosie..."
+  },
+  {
+    "verb": "pause",
+    "length": 1
+  },
+  {
+    "verb": "hangup"
+  }
+]
+```
+
+## 本地测试
+
+使用脚本：
+
+```powershell
+services\call-webhook\scripts\test-webhook.ps1
+```
+
+或者手动调用：
+
+```bash
+curl -X POST http://127.0.0.1:8000/webhooks/jambonz/call ^
+  -H "Content-Type: application/json" ^
+  -d "{\"callSid\":\"call-1\",\"from\":\"+8613811112222\",\"to\":\"+8617000000000\",\"callStatus\":\"trying\"}"
+```
+
+查看通话记录：
+
+```bash
+curl http://127.0.0.1:8000/calls
+```
+
+## 新增商家幕后接入号
+
+```powershell
+$body = @{
+  merchant_id = "merchant-001"
+  merchant_name = "张三理发店"
+  access_number = "+8617000000001"
+  original_number = "+8613812345678"
+  transfer_phone = "+8613812345678"
+  enabled = $true
+} | ConvertTo-Json
+
+Invoke-RestMethod `
+  -Uri "http://127.0.0.1:8000/merchants" `
+  -Method Post `
+  -ContentType "application/json" `
+  -Body $body
+```
+
+查看商家：
+
+```powershell
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/merchants"
+```
+
+## Phase 1 验收
+
+- 手机能打进 jambonz。
+- jambonz 能调用 `/webhooks/jambonz/call`。
+- 服务能根据 `to` 字段匹配 Rosie 幕后接入号。
+- 电话侧能听到固定欢迎语。
+- `/calls` 能看到通话记录。
+- `/webhooks/jambonz/status` 能记录状态事件。

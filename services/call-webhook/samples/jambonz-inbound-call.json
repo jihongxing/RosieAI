@@ -1,0 +1,9 @@
+{
+  "callSid": "sample-call-1",
+  "callId": "sample-sip-call-1",
+  "from": "+8613811112222",
+  "to": "+8617000000000",
+  "direction": "inbound",
+  "callStatus": "trying"
+}
+
