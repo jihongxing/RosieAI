@@ -1,0 +1,10 @@
+services:
+  ai-agent:
+    build: .
+    ports:
+      - "8010:8010"
+    env_file:
+      - .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
