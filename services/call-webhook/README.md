@@ -188,6 +188,40 @@ curl http://127.0.0.1:8000/digests
 
 `/digests/preview` 会返回 `digest_text`，用于预览每日汇总正文。同一个 `call_sid` 重复提交时会更新原有 transcript、summary 和 inbox item，避免重试造成重复待办。`/digests/generate` 会把本批收件箱条目标记为 `digested`，后续预览不会重复汇总。
 
+## 通知偏好
+
+默认策略：
+
+- `digest_mode`: `daily`
+- `digest_times`: `["20:00"]`
+- `realtime_enabled`: `false`
+- `urgent_realtime_enabled`: `true`
+- `team_wecom_enabled`: `false`
+- `sms_fallback_enabled`: `false`
+
+查看：
+
+```bash
+curl http://127.0.0.1:8000/notification-preferences
+```
+
+改成午间 + 晚间两次汇总：
+
+```bash
+curl -X PUT http://127.0.0.1:8000/notification-preferences \
+  -H "Content-Type: application/json" \
+  -d '{
+    "digest_mode": "twice_daily",
+    "digest_times": ["12:00", "20:00"],
+    "realtime_enabled": false,
+    "urgent_realtime_enabled": true,
+    "team_wecom_enabled": false,
+    "sms_fallback_enabled": false,
+    "quiet_hours_start": "22:00",
+    "quiet_hours_end": "08:00"
+  }'
+```
+
 如果配置：
 
 ```env

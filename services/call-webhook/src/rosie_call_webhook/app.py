@@ -3,6 +3,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 import json
 import logging
+import re
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -61,6 +62,17 @@ class SimulatedCallResultIn(BaseModel):
     transcript: str = Field(min_length=1)
 
 
+class NotificationPreferencesIn(BaseModel):
+    digest_mode: str = Field(default="daily")
+    digest_times: list[str] = Field(default_factory=lambda: ["20:00"])
+    realtime_enabled: bool = False
+    urgent_realtime_enabled: bool = True
+    team_wecom_enabled: bool = False
+    sms_fallback_enabled: bool = False
+    quiet_hours_start: str | None = None
+    quiet_hours_end: str | None = None
+
+
 async def _json_payload(request: Request) -> dict[str, Any]:
     try:
         payload = await request.json()
@@ -69,6 +81,42 @@ async def _json_payload(request: Request) -> dict[str, Any]:
     if not isinstance(payload, dict):
         return {}
     return payload
+
+
+def _normalize_notification_preferences(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "merchant_id": row["merchant_id"],
+        "digest_mode": row["digest_mode"],
+        "digest_times": json.loads(row["digest_times"]),
+        "realtime_enabled": bool(row["realtime_enabled"]),
+        "urgent_realtime_enabled": bool(row["urgent_realtime_enabled"]),
+        "team_wecom_enabled": bool(row["team_wecom_enabled"]),
+        "sms_fallback_enabled": bool(row["sms_fallback_enabled"]),
+        "quiet_hours_start": row.get("quiet_hours_start"),
+        "quiet_hours_end": row.get("quiet_hours_end"),
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
+
+
+def _validate_notification_preferences(preferences: NotificationPreferencesIn) -> None:
+    if preferences.digest_mode not in {"daily", "twice_daily", "hourly", "manual"}:
+        raise HTTPException(status_code=400, detail="invalid digest_mode")
+
+    if not preferences.digest_times:
+        raise HTTPException(status_code=400, detail="digest_times cannot be empty")
+
+    time_pattern = re.compile(r"^\d{2}:\d{2}$")
+    for item in preferences.digest_times:
+        if not time_pattern.match(item):
+            raise HTTPException(status_code=400, detail=f"invalid digest time: {item}")
+        hour, minute = item.split(":")
+        if int(hour) > 23 or int(minute) > 59:
+            raise HTTPException(status_code=400, detail=f"invalid digest time: {item}")
+
+    for item in (preferences.quiet_hours_start, preferences.quiet_hours_end):
+        if item is not None and not time_pattern.match(item):
+            raise HTTPException(status_code=400, detail=f"invalid quiet hour: {item}")
 
 
 def _inbox_title(summary: dict[str, Any]) -> str:
@@ -153,6 +201,37 @@ def list_merchants() -> dict[str, Any]:
 def upsert_merchant(merchant: MerchantIn) -> dict[str, str]:
     db.upsert_merchant(merchant.model_dump())
     return {"status": "ok", "merchant_id": merchant.merchant_id}
+
+
+@app.get("/notification-preferences")
+def get_notification_preferences(merchant_id: str | None = None) -> dict[str, Any]:
+    target_merchant_id = merchant_id or settings.default_merchant_id
+    merchant = db.find_merchant_by_id(target_merchant_id)
+    if not merchant:
+        raise HTTPException(status_code=404, detail="unknown merchant")
+    row = db.ensure_notification_preferences(target_merchant_id)
+    return _normalize_notification_preferences(row)
+
+
+@app.put("/notification-preferences")
+def update_notification_preferences(
+    preferences: NotificationPreferencesIn,
+    merchant_id: str | None = None,
+) -> dict[str, Any]:
+    target_merchant_id = merchant_id or settings.default_merchant_id
+    merchant = db.find_merchant_by_id(target_merchant_id)
+    if not merchant:
+        raise HTTPException(status_code=404, detail="unknown merchant")
+
+    _validate_notification_preferences(preferences)
+    row = db.update_notification_preferences(
+        target_merchant_id,
+        {
+            **preferences.model_dump(),
+            "digest_times": json.dumps(preferences.digest_times),
+        },
+    )
+    return _normalize_notification_preferences(row)
 
 
 @app.post("/webhooks/jambonz/call")

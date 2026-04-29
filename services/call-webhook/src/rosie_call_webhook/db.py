@@ -107,6 +107,20 @@ CREATE TABLE IF NOT EXISTS digests (
 );
 
 CREATE INDEX IF NOT EXISTS idx_digests_merchant ON digests(merchant_id, id);
+
+CREATE TABLE IF NOT EXISTS notification_preferences (
+    merchant_id TEXT PRIMARY KEY,
+    digest_mode TEXT NOT NULL DEFAULT 'daily',
+    digest_times TEXT NOT NULL DEFAULT '["20:00"]',
+    realtime_enabled INTEGER NOT NULL DEFAULT 0,
+    urgent_realtime_enabled INTEGER NOT NULL DEFAULT 1,
+    team_wecom_enabled INTEGER NOT NULL DEFAULT 0,
+    sms_fallback_enabled INTEGER NOT NULL DEFAULT 0,
+    quiet_hours_start TEXT,
+    quiet_hours_end TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 """
 
 
@@ -178,6 +192,7 @@ class Database:
                 """,
                 (merchant_id, merchant_name, normalize_access_number(access_number), transfer_phone),
             )
+        self.ensure_notification_preferences(merchant_id)
 
     def upsert_merchant(self, merchant: dict[str, Any]) -> None:
         with self.connect() as conn:
@@ -204,6 +219,70 @@ class Database:
                     1 if merchant.get("enabled", True) else 0,
                 ),
             )
+        self.ensure_notification_preferences(merchant["merchant_id"])
+
+    def ensure_notification_preferences(self, merchant_id: str) -> dict[str, Any]:
+        with self.connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO notification_preferences (merchant_id)
+                VALUES (?)
+                ON CONFLICT(merchant_id) DO NOTHING
+                """,
+                (merchant_id,),
+            )
+            row = conn.execute(
+                """
+                SELECT merchant_id, digest_mode, digest_times, realtime_enabled,
+                       urgent_realtime_enabled, team_wecom_enabled, sms_fallback_enabled,
+                       quiet_hours_start, quiet_hours_end, created_at, updated_at
+                FROM notification_preferences
+                WHERE merchant_id = ?
+                """,
+                (merchant_id,),
+            ).fetchone()
+        return dict(row)
+
+    def update_notification_preferences(self, merchant_id: str, preferences: dict[str, Any]) -> dict[str, Any]:
+        self.ensure_notification_preferences(merchant_id)
+        updates = {
+            "digest_mode": preferences["digest_mode"],
+            "digest_times": preferences["digest_times"],
+            "realtime_enabled": 1 if preferences["realtime_enabled"] else 0,
+            "urgent_realtime_enabled": 1 if preferences["urgent_realtime_enabled"] else 0,
+            "team_wecom_enabled": 1 if preferences["team_wecom_enabled"] else 0,
+            "sms_fallback_enabled": 1 if preferences["sms_fallback_enabled"] else 0,
+            "quiet_hours_start": preferences.get("quiet_hours_start"),
+            "quiet_hours_end": preferences.get("quiet_hours_end"),
+        }
+        with self.connect() as conn:
+            conn.execute(
+                """
+                UPDATE notification_preferences
+                SET digest_mode = ?,
+                    digest_times = ?,
+                    realtime_enabled = ?,
+                    urgent_realtime_enabled = ?,
+                    team_wecom_enabled = ?,
+                    sms_fallback_enabled = ?,
+                    quiet_hours_start = ?,
+                    quiet_hours_end = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE merchant_id = ?
+                """,
+                (
+                    updates["digest_mode"],
+                    updates["digest_times"],
+                    updates["realtime_enabled"],
+                    updates["urgent_realtime_enabled"],
+                    updates["team_wecom_enabled"],
+                    updates["sms_fallback_enabled"],
+                    updates["quiet_hours_start"],
+                    updates["quiet_hours_end"],
+                    merchant_id,
+                ),
+            )
+        return self.ensure_notification_preferences(merchant_id)
 
     def find_merchant_by_access_number(self, access_number: str) -> dict[str, Any] | None:
         normalized_access_number = normalize_access_number(access_number)

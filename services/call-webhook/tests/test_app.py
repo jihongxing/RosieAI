@@ -208,3 +208,55 @@ def test_generate_digest_marks_items_as_digested():
         digests = digests_response.json()["items"]
         assert digests[0]["id"] == body["digest_id"]
         assert "Rosie 今日帮你整理了" in digests[0]["digest_text"]
+
+
+def test_notification_preferences_have_product_defaults():
+    with TestClient(app) as client:
+        response = client.get("/notification-preferences")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["digest_mode"] == "daily"
+        assert body["digest_times"] == ["20:00"]
+        assert body["realtime_enabled"] is False
+        assert body["urgent_realtime_enabled"] is True
+        assert body["team_wecom_enabled"] is False
+        assert body["sms_fallback_enabled"] is False
+
+
+def test_can_update_notification_preferences():
+    with TestClient(app) as client:
+        response = client.put(
+            "/notification-preferences",
+            json={
+                "digest_mode": "twice_daily",
+                "digest_times": ["12:00", "20:00"],
+                "realtime_enabled": False,
+                "urgent_realtime_enabled": True,
+                "team_wecom_enabled": True,
+                "sms_fallback_enabled": True,
+                "quiet_hours_start": "22:00",
+                "quiet_hours_end": "08:00",
+            },
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["digest_mode"] == "twice_daily"
+        assert body["digest_times"] == ["12:00", "20:00"]
+        assert body["team_wecom_enabled"] is True
+        assert body["sms_fallback_enabled"] is True
+        assert body["quiet_hours_start"] == "22:00"
+
+
+def test_rejects_invalid_notification_digest_time():
+    with TestClient(app) as client:
+        response = client.put(
+            "/notification-preferences",
+            json={
+                "digest_mode": "daily",
+                "digest_times": ["25:00"],
+            },
+        )
+
+        assert response.status_code == 400
