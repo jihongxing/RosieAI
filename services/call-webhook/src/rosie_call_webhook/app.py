@@ -8,9 +8,10 @@ from typing import Any
 from fastapi import FastAPI, Query, Request
 from pydantic import BaseModel, Field
 
+from .ai_agent import generate_greeting
 from .config import get_settings
 from .db import Database
-from .jambonz import extract_call, unknown_number_verbs, welcome_verbs
+from .jambonz import extract_call, unknown_number_verbs, welcome_text_verbs, welcome_verbs
 from .notifier import notify_wecom
 
 
@@ -95,6 +96,16 @@ async def inbound_call(request: Request) -> list[dict[str, Any]]:
             f"幕后接入号：{call['to_number'] or '未知'}"
         ),
     )
+
+    if settings.use_ai_greeting:
+        reply = await generate_greeting(
+            settings.ai_agent_url,
+            merchant["merchant_name"],
+            call["from_number"],
+            settings.ai_timeout_seconds,
+        )
+        if reply:
+            return welcome_text_verbs(reply)
 
     return welcome_verbs(merchant["merchant_name"])
 

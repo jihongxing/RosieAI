@@ -48,12 +48,16 @@ def hangup() -> dict[str, str]:
 
 
 def welcome_verbs(merchant_name: str) -> list[dict[str, Any]]:
+    return welcome_text_verbs(
+        f"您好，这里是{merchant_name}的 AI 接线员 Rosie。"
+        "机主现在不方便接电话，我已经帮您记录本次来电。"
+        "这是最小验证版本，稍后会将来电信息通知机主。"
+    )
+
+
+def welcome_text_verbs(text: str) -> list[dict[str, Any]]:
     return [
-        say(
-            f"您好，这里是{merchant_name}的 AI 接线员 Rosie。"
-            "机主现在不方便接电话，我已经帮您记录本次来电。"
-            "这是最小验证版本，稍后会将来电信息通知机主。"
-        ),
+        say(text),
         pause(1),
         hangup(),
     ]
@@ -65,4 +69,3 @@ def unknown_number_verbs() -> list[dict[str, Any]]:
         pause(1),
         hangup(),
     ]
-

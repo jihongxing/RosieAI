@@ -4,6 +4,7 @@ import tempfile
 os.environ["ROSIE_DB_PATH"] = tempfile.NamedTemporaryFile(delete=True).name
 os.environ["ROSIE_DEFAULT_ACCESS_NUMBER"] = "+8617000000000"
 os.environ["ROSIE_DEFAULT_MERCHANT_NAME"] = "测试理发店"
+os.environ["ROSIE_USE_AI_GREETING"] = "false"
 
 from fastapi.testclient import TestClient  # noqa: E402
 

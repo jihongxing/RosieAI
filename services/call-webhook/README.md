@@ -39,6 +39,9 @@ http://127.0.0.1:8000
 | `ROSIE_DEFAULT_TRANSFER_PHONE` | 空 | 后续转人工使用，当前 MVP 只保存 |
 | `ROSIE_PUBLIC_BASE_URL` | 空 | 未来生成 actionHook 使用 |
 | `ROSIE_WECOM_WEBHOOK_URL` | 空 | 可选企业微信机器人通知 |
+| `ROSIE_USE_AI_GREETING` | `false` | 是否调用 `ai-agent` 生成欢迎语 |
+| `ROSIE_AI_AGENT_URL` | `http://127.0.0.1:8010` | ai-agent 地址 |
+| `ROSIE_AI_TIMEOUT_SECONDS` | `10` | 调用 ai-agent 超时时间 |
 
 可以复制 `.env.example`：
 
@@ -53,6 +56,26 @@ cd services\call-webhook
 Copy-Item .env.example .env
 docker compose up --build
 ```
+
+## 接入 ai-agent
+
+如果 `ai-agent` 已经在宿主机 `8010` 端口运行：
+
+```env
+ROSIE_USE_AI_GREETING=true
+ROSIE_AI_AGENT_URL=http://host.docker.internal:8010
+ROSIE_AI_TIMEOUT_SECONDS=10
+```
+
+如果你不用 Docker、直接在宿主机跑 call-webhook：
+
+```env
+ROSIE_USE_AI_GREETING=true
+ROSIE_AI_AGENT_URL=http://127.0.0.1:8010
+ROSIE_AI_TIMEOUT_SECONDS=10
+```
+
+AI greeting 失败时会自动降级为固定欢迎语，不会阻塞电话接听。
 
 ## jambonz 配置
 
