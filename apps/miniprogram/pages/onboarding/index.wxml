@@ -1,0 +1,88 @@
+<view class="page">
+  <view class="header">
+    <view class="title">开通与套餐</view>
+    <view class="subtitle">{{merchantId}} · {{statusText}} {{trialText}}</view>
+  </view>
+
+  <view wx:if="{{loading}}" class="empty">加载中</view>
+  <view wx:elif="{{errorMessage}}" class="error-card">
+    <view class="error-title">服务状态加载失败</view>
+    <view class="error-message">{{errorMessage}}</view>
+    <button class="button secondary error-action" bindtap="loadStatus">重试</button>
+  </view>
+
+  <block wx:else>
+    <view class="card plan-card">
+      <view class="row">
+        <view>
+          <view class="label">当前套餐</view>
+          <view class="plan-name">{{plan.name}}</view>
+        </view>
+        <view class="badge">{{plan.price_text}}</view>
+      </view>
+      <view wx:for="{{plan.features}}" wx:key="*this" class="feature-item">{{item}}</view>
+      <button
+        wx:if="{{canActivateTrial}}"
+        class="button activate-button"
+        loading="{{activating}}"
+        disabled="{{activating}}"
+        bindtap="activateTrial"
+      >开通 14 天试用</button>
+      <button
+        wx:else
+        class="button activate-button"
+        loading="{{paying}}"
+        disabled="{{paying}}"
+        bindtap="createRenewalOrder"
+      >续费 1 个月</button>
+    </view>
+
+    <view class="card">
+      <view class="section-title">试点价值</view>
+      <view class="field"><text class="label">本月来电</text><text>{{metrics.total_calls}}</text></view>
+      <view class="field"><text class="label">有效线索</text><text>{{metrics.effective_calls}}</text></view>
+      <view class="field"><text class="label">预约意向</text><text>{{metrics.appointment_count}}</text></view>
+      <view class="field"><text class="label">预估节省</text><text>{{valueText}}</text></view>
+    </view>
+
+    <view class="card">
+      <view class="section-title">开通步骤</view>
+      <view wx:for="{{onboardingSteps}}" wx:key="key" class="step-row">
+        <view class="step-dot {{item.status}}"></view>
+        <view class="step-label">{{item.label}}</view>
+        <view class="step-status">{{item.done ? "已完成" : "待完成"}}</view>
+      </view>
+    </view>
+
+    <view class="card">
+      <view class="section-title">条件呼叫转移</view>
+      <view wx:for="{{forwardingInstructions}}" wx:key="scenario" class="field">
+        <text class="label">{{item.scenario}}</text>
+        <text>{{item.dial_code}}</text>
+      </view>
+    </view>
+
+    <view class="card">
+      <view class="section-title">增值服务</view>
+      <view wx:for="{{addOns}}" wx:key="code" class="field">
+        <text class="label">{{item.name}}</text>
+        <text>{{item.price_text}}</text>
+      </view>
+    </view>
+
+    <view class="card">
+      <view class="section-title">支付订单</view>
+      <view wx:if="{{paymentOrders.length === 0}}" class="muted">暂无订单</view>
+      <view wx:for="{{paymentOrders}}" wx:key="order_no" class="order-item">
+        <view class="row">
+          <view>
+            <view class="order-no">{{item.order_no}}</view>
+            <view class="meta">{{item.createdAtText}}</view>
+          </view>
+          <view class="badge {{item.status}}">{{item.statusText}}</view>
+        </view>
+        <view class="field order-field"><text class="label">金额</text><text>{{item.amountText}}</text></view>
+      </view>
+    </view>
+  </block>
+</view>

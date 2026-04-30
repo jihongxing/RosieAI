@@ -39,6 +39,8 @@ http://127.0.0.1:8000
 | `ROSIE_DEFAULT_TRANSFER_PHONE` | 空 | 后续转人工使用，当前 MVP 只保存 |
 | `ROSIE_PUBLIC_BASE_URL` | 空 | 未来生成 actionHook 使用 |
 | `ROSIE_WECOM_WEBHOOK_URL` | 空 | 可选企业微信机器人通知 |
+| `ROSIE_CALL_NOTICE_ENABLED` | `true` | 是否在入站欢迎语前播放 AI 接待和摘要用途告知 |
+| `ROSIE_CALL_NOTICE_TEXT` | `本通话将由 AI 接待并生成文字摘要，用于通知商家跟进。` | 试点合规告知文案；启用 realtime listen 时会同时写入 metadata |
 | `ROSIE_BUSINESS_API_URL` | 空 | Go 正式业务后端地址；设置后读取 `/merchant-profile` 的 `system_prompt` |
 | `ROSIE_USE_AI_GREETING` | `false` | 是否调用 `ai-agent` 生成欢迎语 |
 | `ROSIE_USE_AI_EXTRACT` | `false` | 是否调用 `ai-agent /extract` 生成来电摘要，关闭时使用本地规则兜底 |
@@ -83,6 +85,10 @@ ROSIE_AI_TIMEOUT_SECONDS=10
 ```
 
 配置 `ROSIE_BUSINESS_API_URL` 后，call-webhook 会按 `merchant_id` 读取 Go API 的 `/merchant-profile`，把返回的 `system_prompt` 传给 `ai-agent /chat`、`ai-agent /extract`，并写入 realtime listen metadata，后续 Pipecat / STT / TTS 链路可直接复用。AI greeting 或 Go API 读取失败时会自动降级为固定欢迎语，不会阻塞电话接听。
+
+## 试点告知
+
+默认开启 `ROSIE_CALL_NOTICE_ENABLED=true`。每通入站电话都会在欢迎语前加入 `ROSIE_CALL_NOTICE_TEXT`，避免 AI greeting 或固定欢迎语绕过身份/摘要用途告知。启用实时语音时，同一文案也会写入 listen metadata 的 `call_notice` 字段，便于之后按 call_sid 审计。
 
 ## 接入实时语音 WebSocket
 

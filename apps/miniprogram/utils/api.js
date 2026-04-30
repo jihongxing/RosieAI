@@ -20,10 +20,14 @@ function request(path, options = {}) {
           return
         }
         const detail = res.data && res.data.detail ? res.data.detail : `HTTP ${res.statusCode}`
-        reject(new Error(detail))
+        const error = new Error(detail)
+        error.statusCode = res.statusCode
+        reject(error)
       },
       fail(err) {
-        reject(new Error(err.errMsg || "request failed"))
+        const error = new Error(err.errMsg || "request failed")
+        error.statusCode = 0
+        reject(error)
       }
     })
   })
@@ -52,11 +56,50 @@ module.exports = {
   getIndustryTemplates() {
     return request("/industry-templates")
   },
+  getValueMetrics(merchantId, period = "month") {
+    return request(`/value-metrics${query({ merchant_id: merchantId, period })}`)
+  },
+  getServiceStatus(merchantId) {
+    return request(`/service-status${query({ merchant_id: merchantId })}`)
+  },
+  activateTrialService(merchantId, data) {
+    return request(`/service-status/activate-trial${query({ merchant_id: merchantId })}`, {
+      method: "POST",
+      data
+    })
+  },
+  getPaymentOrders(merchantId) {
+    return request(`/payment-orders${query({ merchant_id: merchantId })}`)
+  },
+  createPaymentOrder(merchantId, data) {
+    return request(`/payment-orders${query({ merchant_id: merchantId })}`, {
+      method: "POST",
+      data
+    })
+  },
   getInbox(merchantId) {
     return request(`/inbox${query({ merchant_id: merchantId })}`)
   },
   getCallDetail(callSid) {
     return request(`/calls/${encodeURIComponent(callSid)}`)
+  },
+  createCallbackRequest(callSid, data) {
+    return request(`/calls/${encodeURIComponent(callSid)}/callback-requests`, {
+      method: "POST",
+      data
+    })
+  },
+  updateCallbackRequestStatus(callSid, callbackId, data) {
+    return request(`/calls/${encodeURIComponent(callSid)}/callback-requests/${encodeURIComponent(callbackId)}`, {
+      method: "PATCH",
+      data
+    })
+  },
+  updateInboxItemStatus(callSid, data) {
+    return request(`/calls/${encodeURIComponent(callSid)}/inbox-item`, {
+      method: "PATCH",
+      data
+    })
   },
   getDigests(merchantId) {
     return request(`/digests${query({ merchant_id: merchantId })}`)

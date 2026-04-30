@@ -277,6 +277,100 @@ def test_jambonz_websocket_queues_failed_business_result_and_flushes(monkeypatch
     assert item["business_result_retry_queued"] is False
 
 
+def test_failed_business_result_is_persisted_via_business_api(monkeypatch: pytest.MonkeyPatch):
+    class FakePipeline:
+        async def warmup(self):
+            return None
+
+        async def process_audio(self, context, audio, history):
+            return None
+
+        async def process_text(self, context, customer_text, history):
+            return RealtimeTurn(
+                transcript=customer_text,
+                reply={"type": "agent_reply", "source": "test_agent", "reply": "我会记录下来。"},
+                audio=None,
+                stt_source="text_frame",
+                timings_ms={"total_ms": 20},
+            )
+
+    class PersistentRetryBusinessAPI:
+        def __init__(self):
+            self.items = []
+
+        async def post_realtime_call_result(self, payload):
+            raise RuntimeError("business api rejected result")
+
+        async def enqueue_business_result_retry(self, session_id, payload, attempt_count, last_error):
+            item = {
+                "id": 7,
+                "session_id": session_id,
+                "call_sid": payload["call_sid"],
+                "payload": payload,
+                "status": "failed",
+                "attempt_count": attempt_count,
+                "last_error": last_error,
+            }
+            self.items = [item]
+            return {"status": "ok", "item": item}
+
+        async def list_business_result_retries(self):
+            return {"items": self.items}
+
+        async def flush_business_result_retries(self, max_attempts):
+            return {
+                "status": "ok",
+                "total": 1,
+                "remaining": 0,
+                "results": [
+                    {
+                        "id": 7,
+                        "session_id": "call-persisted-retry",
+                        "call_sid": "call-persisted-retry",
+                        "status": "sent",
+                        "attempt_count": 2,
+                        "last_error": "",
+                    }
+                ],
+            }
+
+        async def close(self):
+            return None
+
+    persistent_api = PersistentRetryBusinessAPI()
+    app_module.business_result_retry_queue.clear()
+    monkeypatch.setattr(app_module, "pipeline", FakePipeline())
+    monkeypatch.setattr(
+        app_module,
+        "settings",
+        replace(
+            app_module.settings,
+            business_api_url="http://business.local",
+            business_result_enabled=True,
+            business_result_retry_max_attempts=5,
+        ),
+    )
+    monkeypatch.setattr(app_module, "business_api", persistent_api)
+
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws/jambonz/audio") as websocket:
+            websocket.send_json({"callSid": "call-persisted-retry", "merchant_id": "demo-merchant"})
+            websocket.send_json({"transcript": "请帮我记录一个问题"})
+            websocket.receive_json()
+
+        retries = client.get("/business-result-retries").json()["items"]
+        assert retries[0]["id"] == 7
+        assert retries[0]["session_id"] == "call-persisted-retry"
+
+        flushed = client.post("/internal/business-result-retries/flush").json()
+        assert flushed["remaining"] == 0
+        assert flushed["results"][0]["status"] == "sent"
+
+    item = [row for row in app_module.sessions.values() if row["session_id"] == "call-persisted-retry"][-1]
+    assert item["business_result_status"] == "sent"
+    assert item["business_result_retry_queued"] is False
+
+
 def test_jambonz_websocket_sends_tts_audio_after_stt(monkeypatch: pytest.MonkeyPatch):
     class FakePipeline:
         async def process_audio(self, context, audio, history):
@@ -314,6 +408,44 @@ def test_jambonz_websocket_sends_tts_audio_after_stt(monkeypatch: pytest.MonkeyP
         assert item["tts_audio_bytes"] == 4
         assert item["stt_source"] == "test_stt"
         assert item["tts_source"] == "test_tts"
+
+
+def test_latency_report_summarizes_recent_turns(monkeypatch: pytest.MonkeyPatch):
+    class FakePipeline:
+        async def process_audio(self, context, audio, history):
+            return None
+
+        async def process_text(self, context, customer_text, history):
+            return RealtimeTurn(
+                transcript=customer_text,
+                reply={"type": "agent_reply", "source": "test_agent", "reply": "好的，已经记录。"},
+                audio=b"\x01\x02",
+                stt_source="text_frame",
+                tts_source="test_tts",
+                timings_ms={"agent_ms": 50, "tts_ms": 80, "total_ms": 130},
+            )
+
+    app_module.sessions.clear()
+    monkeypatch.setattr(app_module, "pipeline", FakePipeline())
+
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws/jambonz/audio") as websocket:
+            websocket.send_json({"callSid": "call-latency", "merchant_id": "demo-merchant"})
+            websocket.send_json({"transcript": "你好，我想预约"})
+            websocket.receive_json()
+            websocket.receive_bytes()
+
+        response = client.get("/latency-report?max_total_ms=1500")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["turn_count"] == 1
+    assert body["slow_turn_count"] == 0
+    assert body["total_ms"]["p95"] == 130
+    assert body["agent_ms"]["p50"] == 50
+    assert body["tts_ms"]["max"] == 80
+    assert body["sources"]["agent"] == {"test_agent": 1}
 
 
 @pytest.mark.asyncio

@@ -1,8 +1,11 @@
 param(
     [string]$WebSocketUrl = "ws://127.0.0.1:8020/ws/jambonz/audio",
+    [string]$ApiBaseUrl = "http://127.0.0.1:8020",
     [string]$ModelDir = "$env:USERPROFILE\.cache\modelscope\hub\models\iic\SenseVoiceSmall",
     [string]$CallSid = "local-voice-smoke",
-    [int]$Turns = 2
+    [int]$Turns = 2,
+    [int]$MaxTotalMs = 1500,
+    [string]$ReportPath = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -16,9 +19,11 @@ $pcm = Join-Path $runtimeDir "sensevoice-zh-16k.s16le"
 & ffmpeg -hide_banner -loglevel error -y -i $mp3 -f s16le -acodec pcm_s16le -ac 1 -ar 16000 $pcm
 
 $env:ROSIE_SMOKE_WS_URL = $WebSocketUrl
+$env:ROSIE_SMOKE_API_BASE_URL = $ApiBaseUrl.TrimEnd("/")
 $env:ROSIE_SMOKE_PCM = $pcm
 $env:ROSIE_SMOKE_CALL_SID = $CallSid
 $env:ROSIE_SMOKE_TURNS = "$Turns"
+$env:ROSIE_SMOKE_MAX_TOTAL_MS = "$MaxTotalMs"
 
 $python = Join-Path $repoRoot ".venv\Scripts\python.exe"
 $code = @'
@@ -28,6 +33,7 @@ import os
 import time
 from pathlib import Path
 
+import httpx
 import websockets
 
 
@@ -60,7 +66,18 @@ async def main():
     results = []
     for index in range(1, turns + 1):
         results.append(await run_turn(index))
-    print(json.dumps(results, ensure_ascii=False, indent=2))
+    api_base_url = os.environ.get("ROSIE_SMOKE_API_BASE_URL", "http://127.0.0.1:8020").rstrip("/")
+    max_total_ms = int(os.environ.get("ROSIE_SMOKE_MAX_TOTAL_MS", "1500"))
+    async with httpx.AsyncClient(timeout=10) as client:
+        report_response = await client.get(
+            f"{api_base_url}/latency-report",
+            params={"max_total_ms": max_total_ms, "limit": max(turns * 2, 20)},
+        )
+        report_response.raise_for_status()
+        report = report_response.json()
+    print(json.dumps({"turns": results, "latency_report": report}, ensure_ascii=False, indent=2))
+    if report.get("status") == "degraded":
+        raise SystemExit(f"latency p95 exceeded {max_total_ms}ms")
 
 
 asyncio.run(main())
@@ -68,4 +85,8 @@ asyncio.run(main())
 
 $scriptPath = Join-Path $runtimeDir "smoke-local-voice.py"
 Set-Content -Path $scriptPath -Value $code -Encoding ascii
-& $python $scriptPath
+$output = & $python $scriptPath
+if ($ReportPath) {
+    Set-Content -Path $ReportPath -Value ($output -join [Environment]::NewLine) -Encoding utf8
+}
+$output

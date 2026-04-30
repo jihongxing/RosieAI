@@ -173,15 +173,29 @@ curl http://127.0.0.1:8020/health
 本机端到端 smoke test：
 
 ```powershell
-.\scripts\smoke-local-voice.ps1 -CallSid smoke-001 -Turns 3
+.\scripts\smoke-local-voice.ps1 -CallSid smoke-001 -Turns 3 -MaxTotalMs 1500
 curl http://127.0.0.1:8020/sessions
+curl "http://127.0.0.1:8020/latency-report?max_total_ms=1500"
 ```
+
+一条命令生成 Phase 3 延迟基线：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File ..\..\ops\phase3-latency-baseline.ps1 `
+  -TtsProvider sherpa_onnx `
+  -Turns 2 `
+  -MaxTotalMs 1500
+```
+
+`/latency-report` 会聚合最近 turns 的 `stt_ms`、`agent_ms`、`tts_ms` 和 `total_ms`，返回 p50、p95、max、慢 turn 数量以及各 provider source 分布。`status=ok` 表示 `total_ms.p95` 没超过 `max_total_ms`；`status=degraded` 表示真实电话侧联调需要继续拆分 STT / Agent / TTS 瓶颈。`smoke-local-voice.ps1` 会在发送音频后自动读取同一份报告，可用 `-ReportPath data\runtime\voice-latency-report.json` 落盘。
 
 2026-04-30 本机基线：SenseVoiceSmall 首次权重下载约 893MB；模型冷加载后首个 turn 约 13s，其中 STT 模型加载约 10s，Edge TTS 约 2.7s。启用默认 TTS 内存缓存后，同一句回复的 warm turn 约 0.6-0.7s，TTS 来源为 `edge_tts_cache`；STT RTF 约 0.10。当前未连接外部 `ai-agent` 时，回复来源为 `local_fallback`。
 
 2026-04-30 动态 TTS 基线：`ROSIE_TTS_PROVIDER=sapi` 时，不使用 TTS cache，warm turn 为 1.25-1.49s；分段约为 STT 0.70-0.88s，SAPI TTS 0.50-0.58s。
 
 2026-04-30 sherpa-onnx 基线：`ROSIE_TTS_PROVIDER=sherpa_onnx` 时，不使用 TTS cache，warm turn 为 0.95-1.08s；分段约为 STT 0.61-0.71s，sherpa-onnx TTS 0.33-0.37s。启用启动预热后，模型加载约 10.37s 发生在 startup，`ready=true` 后第一通 WebSocket smoke 为 1.08s，后续约 1.11-1.22s。
+
+2026-04-30 Phase 3 基线脚本实测：`ops/phase3-latency-baseline.ps1 -TtsProvider sherpa_onnx -Turns 2 -MaxTotalMs 1500` 返回 `status=ok`，预热 12.41s，`total_ms.p50=1048`、`total_ms.p95=1151`、`total_ms.max=1163`；分段 p95 为 STT 869ms、ai-agent 10ms、sherpa-onnx TTS 275ms。报告落盘到 `data/runtime/phase3-latency-20260430-154545.json`。
 
 TTS 缓存配置：
 

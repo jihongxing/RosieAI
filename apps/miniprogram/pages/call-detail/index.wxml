@@ -1,6 +1,11 @@
 <view class="page">
   <view wx:if="{{loading}}" class="empty">加载中</view>
   <view wx:elif="{{showMissing}}" class="empty">未找到通话</view>
+  <view wx:elif="{{errorMessage}}" class="error-card">
+    <view class="error-title">通话详情加载失败</view>
+    <view class="error-message">{{errorMessage}}</view>
+    <button class="button secondary error-action" bindtap="loadDetail">重试</button>
+  </view>
 
   <block wx:else>
     <view class="header">
@@ -17,6 +22,11 @@
         <view class="badge {{summary.priority}}">{{summary.priorityText}}</view>
       </view>
       <view class="body-text">{{summary.summaryText}}</view>
+      <view class="row action-row">
+        <button class="button secondary action-button" loading="{{actionLoading}}" disabled="{{actionLoading}}" bindtap="onMarkHandledTap">已处理</button>
+        <button class="button secondary action-button" loading="{{actionLoading}}" disabled="{{actionLoading}}" bindtap="onArchiveTap">归档</button>
+        <button class="button secondary action-button" loading="{{actionLoading}}" disabled="{{actionLoading}}" bindtap="onRestoreTap">待处理</button>
+      </view>
     </view>
 
     <view class="card">
@@ -25,6 +35,13 @@
       <view class="field"><text class="label">客户姓名</text><text>{{summary.customerNameText}}</text></view>
       <view class="field"><text class="label">客户电话</text><text>{{summary.customerPhoneText}}</text></view>
       <view class="field"><text class="label">需要跟进</text><text>{{summary.followupText}}</text></view>
+      <button
+        wx:if="{{canCallback}}"
+        class="button callback-button"
+        loading="{{callbackLoading}}"
+        disabled="{{callbackLoading}}"
+        bindtap="onCallbackTap"
+      >回拨客户</button>
     </view>
 
     <view class="card">
@@ -37,6 +54,11 @@
       <view class="field"><text class="label">Call SID</text><text>{{call.call_sid}}</text></view>
       <view class="field"><text class="label">状态</text><text>{{call.call_status}}</text></view>
       <view class="field"><text class="label">时间</text><text>{{call.createdAtLabel}}</text></view>
+      <view class="field"><text class="label">回拨记录</text><text>{{callbackRequests.length}}</text></view>
+      <view wx:for="{{callbackRequests}}" wx:key="id" class="audit-item">
+        <view class="audit-main">{{item.target_number}}</view>
+        <view class="audit-meta">{{item.statusLabel}} · {{item.createdAtLabel}}</view>
+      </view>
     </view>
   </block>
 </view>

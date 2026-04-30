@@ -12,6 +12,26 @@ type Merchant struct {
 	CreatedAt      time.Time `json:"created_at"`
 }
 
+type AccessNumber struct {
+	ID                     int64      `json:"id"`
+	Number                 string     `json:"number"`
+	Provider               string     `json:"provider,omitempty"`
+	ProviderNumberID       string     `json:"provider_number_id,omitempty"`
+	TrunkID                string     `json:"trunk_id,omitempty"`
+	JambonzApplicationID   string     `json:"jambonz_application_id,omitempty"`
+	JambonzApplicationName string     `json:"jambonz_application_name,omitempty"`
+	JambonzCallHookURL     string     `json:"jambonz_call_hook_url,omitempty"`
+	JambonzStatusHookURL   string     `json:"jambonz_status_hook_url,omitempty"`
+	JambonzConfigSyncedAt  *time.Time `json:"jambonz_config_synced_at,omitempty"`
+	Status                 string     `json:"status"`
+	MerchantID             string     `json:"merchant_id,omitempty"`
+	Notes                  string     `json:"notes,omitempty"`
+	AssignedAt             *time.Time `json:"assigned_at,omitempty"`
+	ReleasedAt             *time.Time `json:"released_at,omitempty"`
+	CreatedAt              time.Time  `json:"created_at"`
+	UpdatedAt              time.Time  `json:"updated_at"`
+}
+
 type FAQItem struct {
 	Question string `json:"question"`
 	Answer   string `json:"answer"`
@@ -83,6 +103,70 @@ type InboxItem struct {
 	UpdatedAt         time.Time `json:"updated_at"`
 }
 
+type CallbackRequest struct {
+	ID              int64     `json:"id"`
+	MerchantID      string    `json:"merchant_id"`
+	OriginalCallSID string    `json:"original_call_sid"`
+	OriginalCallID  string    `json:"original_call_id,omitempty"`
+	TargetNumber    string    `json:"target_number"`
+	RequestedBy     string    `json:"requested_by,omitempty"`
+	Reason          string    `json:"reason,omitempty"`
+	Status          string    `json:"status"`
+	AuditNote       string    `json:"audit_note,omitempty"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+}
+
+type ValueMetrics struct {
+	MerchantID             string    `json:"merchant_id"`
+	Period                 string    `json:"period"`
+	Since                  time.Time `json:"since"`
+	Until                  time.Time `json:"until"`
+	TotalCalls             int       `json:"total_calls"`
+	EffectiveCalls         int       `json:"effective_calls"`
+	AppointmentCount       int       `json:"appointment_count"`
+	SpamCount              int       `json:"spam_count"`
+	FollowupCount          int       `json:"followup_count"`
+	UrgentCount            int       `json:"urgent_count"`
+	HandledCount           int       `json:"handled_count"`
+	ArchivedCount          int       `json:"archived_count"`
+	CallbackRequestedCount int       `json:"callback_requested_count"`
+	CallbackDialedCount    int       `json:"callback_dialed_count"`
+	EstimatedSavedMinutes  int       `json:"estimated_saved_minutes"`
+	AppointmentRate        float64   `json:"appointment_rate"`
+	CallbackCompletionRate float64   `json:"callback_completion_rate"`
+}
+
+type ServiceSubscription struct {
+	MerchantID          string     `json:"merchant_id"`
+	PlanCode            string     `json:"plan_code"`
+	Status              string     `json:"status"`
+	TrialStartedAt      *time.Time `json:"trial_started_at,omitempty"`
+	TrialEndsAt         *time.Time `json:"trial_ends_at,omitempty"`
+	CurrentPeriodEndsAt *time.Time `json:"current_period_ends_at,omitempty"`
+	ActivatedAt         *time.Time `json:"activated_at,omitempty"`
+	CreatedAt           time.Time  `json:"created_at"`
+	UpdatedAt           time.Time  `json:"updated_at"`
+}
+
+type PaymentOrder struct {
+	ID              int64      `json:"id"`
+	MerchantID      string     `json:"merchant_id"`
+	OrderNo         string     `json:"order_no"`
+	OrderType       string     `json:"order_type"`
+	PlanCode        string     `json:"plan_code"`
+	AddOnCode       string     `json:"add_on_code,omitempty"`
+	AmountCents     int        `json:"amount_cents"`
+	Currency        string     `json:"currency"`
+	Status          string     `json:"status"`
+	Provider        string     `json:"provider"`
+	ProviderTradeNo string     `json:"provider_trade_no,omitempty"`
+	PrepayID        string     `json:"prepay_id,omitempty"`
+	PaidAt          *time.Time `json:"paid_at,omitempty"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
+}
+
 type Digest struct {
 	ID            int64     `json:"id"`
 	MerchantID    string    `json:"merchant_id"`
@@ -112,21 +196,36 @@ type NotificationPreferences struct {
 }
 
 type NotificationLog struct {
-	ID                 int64     `json:"id"`
-	MerchantID         string    `json:"merchant_id"`
-	Channel            string    `json:"channel"`
-	MessageType        string    `json:"message_type"`
-	Target             string    `json:"target,omitempty"`
-	Subject            string    `json:"subject,omitempty"`
-	Body               string    `json:"body"`
-	RelatedDigestID    int64     `json:"related_digest_id,omitempty"`
-	RelatedInboxItemID int64     `json:"related_inbox_item_id,omitempty"`
-	IdempotencyKey     string    `json:"idempotency_key"`
-	Status             string    `json:"status"`
-	AttemptCount       int       `json:"attempt_count"`
-	LastError          string    `json:"last_error,omitempty"`
-	CreatedAt          time.Time `json:"created_at"`
-	UpdatedAt          time.Time `json:"updated_at"`
+	ID                 int64      `json:"id"`
+	MerchantID         string     `json:"merchant_id"`
+	Channel            string     `json:"channel"`
+	MessageType        string     `json:"message_type"`
+	Target             string     `json:"target,omitempty"`
+	Subject            string     `json:"subject,omitempty"`
+	Body               string     `json:"body"`
+	RelatedDigestID    int64      `json:"related_digest_id,omitempty"`
+	RelatedInboxItemID int64      `json:"related_inbox_item_id,omitempty"`
+	IdempotencyKey     string     `json:"idempotency_key"`
+	Status             string     `json:"status"`
+	AttemptCount       int        `json:"attempt_count"`
+	MaxAttempts        int        `json:"max_attempts"`
+	LastError          string     `json:"last_error,omitempty"`
+	ErrorCategory      string     `json:"error_category,omitempty"`
+	NextRetryAt        *time.Time `json:"next_retry_at,omitempty"`
+	CreatedAt          time.Time  `json:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at"`
+}
+
+type BusinessResultRetry struct {
+	ID           int64     `json:"id"`
+	SessionID    string    `json:"session_id"`
+	CallSID      string    `json:"call_sid"`
+	Payload      string    `json:"payload"`
+	Status       string    `json:"status"`
+	AttemptCount int       `json:"attempt_count"`
+	LastError    string    `json:"last_error,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 type AppUser struct {

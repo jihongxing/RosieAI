@@ -21,3 +21,35 @@
   text-align: right;
   word-break: break-all;
 }
+
+.action-row {
+  margin-top: 20rpx;
+}
+
+.action-button {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 25rpx;
+}
+
+.callback-button {
+  margin-top: 20rpx;
+  width: 100%;
+}
+
+.audit-item {
+  padding: 16rpx 0 0;
+}
+
+.audit-main {
+  color: #17201c;
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.audit-meta {
+  margin-top: 6rpx;
+  color: #8a929e;
+  font-size: 23rpx;
+}

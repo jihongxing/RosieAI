@@ -1,5 +1,7 @@
 {
   "pages": [
+    "pages/dashboard/index",
+    "pages/onboarding/index",
     "pages/inbox/index",
     "pages/call-detail/index",
     "pages/digests/index",
@@ -18,6 +20,10 @@
     "backgroundColor": "#ffffff",
     "borderStyle": "black",
     "list": [
+      {
+        "pagePath": "pages/dashboard/index",
+        "text": "看板"
+      },
       {
         "pagePath": "pages/inbox/index",
         "text": "收件箱"

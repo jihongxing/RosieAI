@@ -1,0 +1,118 @@
+.plan-card {
+  border-color: #b9ded3;
+  background: #f7fbf9;
+}
+
+.plan-name {
+  margin-top: 6rpx;
+  color: #17201c;
+  font-size: 36rpx;
+  font-weight: 700;
+}
+
+.feature-item {
+  margin-top: 14rpx;
+  color: #25302b;
+  line-height: 1.45;
+}
+
+.activate-button {
+  width: 100%;
+  margin-top: 22rpx;
+}
+
+.section-title {
+  margin-bottom: 18rpx;
+  font-size: 30rpx;
+  font-weight: 700;
+}
+
+.field {
+  display: flex;
+  justify-content: space-between;
+  gap: 24rpx;
+  padding: 14rpx 0;
+  border-bottom: 1rpx solid #eef0f3;
+}
+
+.field:last-child {
+  border-bottom: 0;
+}
+
+.field text:last-child {
+  max-width: 430rpx;
+  color: #17201c;
+  font-weight: 600;
+  text-align: right;
+  word-break: break-all;
+}
+
+.step-row {
+  display: grid;
+  grid-template-columns: 22rpx 1fr auto;
+  gap: 14rpx;
+  align-items: center;
+  padding: 14rpx 0;
+  border-bottom: 1rpx solid #eef0f3;
+}
+
+.step-row:last-child {
+  border-bottom: 0;
+}
+
+.step-dot {
+  width: 18rpx;
+  height: 18rpx;
+  border-radius: 50%;
+  background: #d8dde3;
+}
+
+.step-dot.done {
+  background: #1f6f5b;
+}
+
+.step-label {
+  color: #17201c;
+}
+
+.step-status {
+  color: #8a929e;
+  font-size: 23rpx;
+}
+
+.muted {
+  color: #8a929e;
+  font-size: 25rpx;
+}
+
+.order-item {
+  padding: 16rpx 0;
+  border-bottom: 1rpx solid #eef0f3;
+}
+
+.order-item:last-child {
+  border-bottom: 0;
+}
+
+.order-no {
+  max-width: 430rpx;
+  color: #17201c;
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.order-field {
+  margin-top: 8rpx;
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.badge.paid {
+  background: #e8f4ef;
+  color: #1f6f5b;
+}
+
+.badge.pending {
+  background: #fff8e7;
+  color: #9a6a00;
+}

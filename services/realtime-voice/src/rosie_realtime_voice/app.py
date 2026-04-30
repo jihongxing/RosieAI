@@ -3,10 +3,11 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 import json
 import logging
+import math
 import time
 from typing import Any
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
 
 from .agent import RealtimeAgent
 from .business_api import BusinessAPIClient
@@ -121,13 +122,75 @@ def list_sessions() -> dict[str, Any]:
     return {"items": list(sessions.values())}
 
 
+@app.get("/latency-report")
+def latency_report(
+    limit: int = Query(default=200, ge=1, le=2000),
+    max_total_ms: int = Query(default=1500, ge=1),
+) -> dict[str, Any]:
+    turns = _recent_turns(limit)
+    total_ms = _timing_values(turns, "total_ms")
+    report = {
+        "status": "no_data",
+        "target_total_ms": max_total_ms,
+        "ready": bool(runtime_state["prewarmed"]),
+        "prewarm_ms": runtime_state["prewarm_ms"],
+        "pipeline_provider": settings.pipeline_provider,
+        "stt_provider": settings.stt_provider,
+        "tts_provider": settings.tts_provider,
+        "turn_count": len(turns),
+        "slow_turn_count": len([value for value in total_ms if value > max_total_ms]),
+        "total_ms": _summary(total_ms),
+        "stt_ms": _summary(_timing_values(turns, "stt_ms")),
+        "agent_ms": _summary(_timing_values(turns, "agent_ms")),
+        "tts_ms": _summary(_timing_values(turns, "tts_ms")),
+        "sources": {
+            "stt": _source_counts(turns, "stt_source"),
+            "agent": _source_counts(turns, "agent_source"),
+            "tts": _source_counts(turns, "tts_source"),
+        },
+        "turns": turns,
+    }
+    if total_ms:
+        report["status"] = "ok" if report["total_ms"]["p95"] <= max_total_ms else "degraded"
+    return report
+
+
 @app.get("/business-result-retries")
-def list_business_result_retries() -> dict[str, Any]:
+async def list_business_result_retries() -> dict[str, Any]:
+    if settings.business_api_url and hasattr(business_api, "list_business_result_retries"):
+        try:
+            response = await business_api.list_business_result_retries()
+            if isinstance(response, dict):
+                return response
+        except Exception as exc:  # pragma: no cover - network failures are environment dependent
+            logger.warning("persistent business result retry list failed: %s", exc)
     return {"items": list(business_result_retry_queue.values())}
 
 
 @app.post("/internal/business-result-retries/flush")
 async def flush_business_result_retries() -> dict[str, Any]:
+    if settings.business_api_url and hasattr(business_api, "flush_business_result_retries"):
+        try:
+            response = await business_api.flush_business_result_retries(
+                max_attempts=settings.business_result_retry_max_attempts,
+            )
+        except Exception as exc:  # pragma: no cover - network failures are environment dependent
+            logger.warning("persistent business result retry flush failed: %s", exc)
+        else:
+            if isinstance(response, dict):
+                for result in response.get("results") or []:
+                    if not isinstance(result, dict):
+                        continue
+                    session_id = _string_value(result.get("session_id"))
+                    if session_id in sessions:
+                        sessions[session_id]["business_result_status"] = _string_value(result.get("status"))
+                        sessions[session_id]["business_result_error"] = _string_value(result.get("last_error"))
+                        sessions[session_id]["business_result_retry_queued"] = result.get("status") == "failed"
+                        sessions[session_id]["updated_at"] = time.time()
+                    if result.get("status") == "sent":
+                        business_result_retry_queue.pop(session_id, None)
+                return response
+
     results: list[dict[str, Any]] = []
     for session_id, job in list(business_result_retry_queue.items()):
         if int(job.get("attempt_count") or 0) >= settings.business_result_retry_max_attempts:
@@ -351,7 +414,7 @@ async def _post_business_result(session_id: str) -> None:
     except Exception as exc:  # pragma: no cover - network failures are environment dependent
         session["business_result_status"] = "failed"
         session["business_result_error"] = str(exc)
-        _queue_business_result_retry(session_id, payload, exc)
+        await _queue_business_result_retry(session_id, payload, exc)
         session["updated_at"] = time.time()
         return
 
@@ -395,7 +458,7 @@ async def _dispatch_business_notification(session_id: str, result: dict[str, Any
     session["updated_at"] = time.time()
 
 
-def _queue_business_result_retry(session_id: str, payload: dict[str, Any], exc: Exception) -> None:
+async def _queue_business_result_retry(session_id: str, payload: dict[str, Any], exc: Exception) -> None:
     existing = business_result_retry_queue.get(session_id)
     now = time.time()
     if existing:
@@ -414,6 +477,23 @@ def _queue_business_result_retry(session_id: str, payload: dict[str, Any], exc: 
             "updated_at": now,
             "status": "failed",
         }
+    job = business_result_retry_queue[session_id]
+    if settings.business_api_url and hasattr(business_api, "enqueue_business_result_retry"):
+        try:
+            response = await business_api.enqueue_business_result_retry(
+                session_id=session_id,
+                payload=payload,
+                attempt_count=int(job.get("attempt_count") or 1),
+                last_error=str(exc),
+            )
+            item = response.get("item") if isinstance(response, dict) else None
+            if isinstance(item, dict):
+                job["persistent_id"] = item.get("id")
+                job["status"] = item.get("status") or job["status"]
+                job["attempt_count"] = int(item.get("attempt_count") or job["attempt_count"])
+        except Exception as enqueue_exc:  # pragma: no cover - network failures are environment dependent
+            job["persistent_error"] = str(enqueue_exc)
+            logger.warning("failed to persist business result retry: %s", enqueue_exc)
     if session_id in sessions:
         sessions[session_id]["business_result_retry_queued"] = True
 
@@ -445,6 +525,71 @@ def _business_result_payload(session: dict[str, Any]) -> dict[str, Any]:
             "context": context,
         },
     }
+
+
+def _recent_turns(limit: int) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for session in sessions.values():
+        session_id = _string_value(session.get("session_id"))
+        for index, turn in enumerate(session.get("turns") or [], start=1):
+            timings = turn.get("timings_ms") if isinstance(turn, dict) else None
+            if not isinstance(timings, dict):
+                timings = {}
+            items.append(
+                {
+                    "session_id": session_id,
+                    "turn_index": index,
+                    "stt_source": _string_value(turn.get("stt_source")) if isinstance(turn, dict) else "",
+                    "agent_source": _string_value(turn.get("agent_source")) if isinstance(turn, dict) else "",
+                    "tts_source": _string_value(turn.get("tts_source")) if isinstance(turn, dict) else "",
+                    "timings_ms": timings,
+                    "updated_at": float(session.get("updated_at") or 0),
+                }
+            )
+    items.sort(key=lambda item: (float(item["updated_at"]), str(item["session_id"]), int(item["turn_index"])))
+    return items[-limit:]
+
+
+def _timing_values(turns: list[dict[str, Any]], key: str) -> list[int]:
+    values: list[int] = []
+    for turn in turns:
+        timings = turn.get("timings_ms") or {}
+        value = timings.get(key)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            values.append(round(value))
+    return values
+
+
+def _summary(values: list[int]) -> dict[str, Any]:
+    if not values:
+        return {"count": 0, "p50": 0, "p95": 0, "max": 0}
+    sorted_values = sorted(values)
+    return {
+        "count": len(sorted_values),
+        "p50": _percentile(sorted_values, 0.50),
+        "p95": _percentile(sorted_values, 0.95),
+        "max": sorted_values[-1],
+    }
+
+
+def _percentile(sorted_values: list[int], rank: float) -> int:
+    if len(sorted_values) == 1:
+        return sorted_values[0]
+    position = (len(sorted_values) - 1) * rank
+    lower = math.floor(position)
+    upper = math.ceil(position)
+    if lower == upper:
+        return sorted_values[int(position)]
+    weight = position - lower
+    return round(sorted_values[lower] * (1 - weight) + sorted_values[upper] * weight)
+
+
+def _source_counts(turns: list[dict[str, Any]], key: str) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for turn in turns:
+        source = _string_value(turn.get(key)) or "unknown"
+        counts[source] = counts.get(source, 0) + 1
+    return counts
 
 
 def _transcript_from_turns(turns: list[dict[str, Any]]) -> str:

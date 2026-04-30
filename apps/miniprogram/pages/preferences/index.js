@@ -1,4 +1,5 @@
 const api = require("../../utils/api")
+const subscription = require("../../utils/subscription")
 
 Page({
   data: {
@@ -11,7 +12,12 @@ Page({
     dailyModeClass: "segment active",
     twiceDailyModeClass: "segment",
     manualModeClass: "segment",
-    loading: false
+    loading: false,
+    saving: false,
+    subscribing: false,
+    errorMessage: "",
+    subscribeStatusText: "未授权",
+    subscribeStatusClass: "badge low"
   },
 
   onLoad() {
@@ -28,7 +34,7 @@ Page({
   },
 
   loadPreferences() {
-    this.setData({ loading: true })
+    this.setData({ loading: true, errorMessage: "" })
     api.getPreferences(this.data.merchantId)
       .then((prefs) => {
         this.setData(this.withModeFlags({
@@ -36,10 +42,14 @@ Page({
           digestTimesText: (prefs.digest_times || []).join(","),
           urgentRealtimeEnabled: prefs.urgent_realtime_enabled,
           teamWecomEnabled: prefs.team_wecom_enabled,
-          smsFallbackEnabled: prefs.sms_fallback_enabled
+          smsFallbackEnabled: prefs.sms_fallback_enabled,
+          errorMessage: ""
         }))
       })
-      .catch((err) => wx.showToast({ title: err.message, icon: "none" }))
+      .catch((err) => {
+        this.setData({ errorMessage: err.message })
+        wx.showToast({ title: err.message, icon: "none" })
+      })
       .finally(() => this.setData({ loading: false }))
   },
 
@@ -62,6 +72,7 @@ Page({
   },
 
   save() {
+    this.setData({ saving: true })
     const digestTimes = this.data.digestTimesText
       .split(",")
       .map((item) => item.trim())
@@ -75,7 +86,29 @@ Page({
       sms_fallback_enabled: this.data.smsFallbackEnabled
     })
       .then(() => wx.showToast({ title: "已保存", icon: "success" }))
-      .catch((err) => wx.showToast({ title: err.message, icon: "none" }))
+      .catch((err) => {
+        wx.showToast({ title: err.message, icon: "none" })
+      })
+      .finally(() => this.setData({ saving: false }))
+  },
+
+  authorizeSubscribe() {
+    this.setData({ subscribing: true })
+    subscription.requestNotificationSubscription()
+      .then((result) => {
+        this.setData({
+          subscribeStatusText: subscription.subscriptionStatusText(result),
+          subscribeStatusClass: result.status === "accepted" ? "badge" : "badge low"
+        })
+        if (result.status === "accepted") {
+          wx.showToast({ title: "已授权提醒", icon: "success" })
+        } else if (result.status === "missing_config") {
+          wx.showToast({ title: "未配置模板 ID", icon: "none" })
+        } else {
+          wx.showToast({ title: result.message || "未完成授权", icon: "none" })
+        }
+      })
+      .finally(() => this.setData({ subscribing: false }))
   },
 
   withModeFlags(nextData) {

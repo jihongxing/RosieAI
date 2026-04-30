@@ -1,12 +1,33 @@
 package store
 
-import "rosie-api/internal/domain"
+import (
+	"context"
+	"time"
+
+	"rosie-api/internal/domain"
+)
 
 type Repository interface {
+	Ping(context.Context) error
 	UpsertMerchant(domain.Merchant) (domain.Merchant, error)
 	ListMerchants() ([]domain.Merchant, error)
 	FindMerchantByAccessNumber(string) (domain.Merchant, bool, error)
 	FindMerchantByID(string) (domain.Merchant, bool, error)
+	UpsertAccessNumber(domain.AccessNumber) (domain.AccessNumber, error)
+	ListAccessNumbers(string, int) ([]domain.AccessNumber, error)
+	FindAccessNumberByNumber(string) (domain.AccessNumber, bool, error)
+	AssignAccessNumber(string, string, time.Time) (domain.AccessNumber, error)
+	AutoAssignAccessNumber(string, time.Time) (domain.AccessNumber, bool, error)
+	ReleaseAccessNumber(string, time.Time) (domain.AccessNumber, error)
+	GetValueMetrics(string, time.Time, time.Time) (domain.ValueMetrics, error)
+	EnsureServiceSubscription(string) (domain.ServiceSubscription, error)
+	ActivateTrialSubscription(string, string, time.Time, time.Time) (domain.ServiceSubscription, error)
+	RenewServiceSubscription(string, string, time.Time, int) (domain.ServiceSubscription, error)
+	InsertPaymentOrder(domain.PaymentOrder) (domain.PaymentOrder, error)
+	FindPaymentOrderByNo(string) (domain.PaymentOrder, bool, error)
+	ListPaymentOrders(string, int) ([]domain.PaymentOrder, error)
+	UpdatePaymentOrderPrepay(string, string) (domain.PaymentOrder, error)
+	MarkPaymentOrderPaid(string, string, time.Time) (domain.PaymentOrder, error)
 	EnsureMerchantProfile(string) (domain.MerchantProfile, error)
 	UpdateMerchantProfile(domain.MerchantProfile) (domain.MerchantProfile, error)
 	UpsertCall(domain.Call) (domain.Call, error)
@@ -19,6 +40,10 @@ type Repository interface {
 	UpsertInboxItem(domain.InboxItem) (domain.InboxItem, error)
 	FindInboxItemByCallSID(string) (domain.InboxItem, bool, error)
 	ListInboxItems(string, int) ([]domain.InboxItem, error)
+	UpdateInboxItemStatus(string, string) (domain.InboxItem, error)
+	InsertCallbackRequest(domain.CallbackRequest) (domain.CallbackRequest, error)
+	ListCallbackRequestsByCallSID(string, int) ([]domain.CallbackRequest, error)
+	UpdateCallbackRequestStatus(int64, string, string, string) (domain.CallbackRequest, error)
 	ListPendingDigestItems(string, int) ([]domain.InboxItem, error)
 	InsertDigest(domain.Digest) (domain.Digest, error)
 	MarkInboxItemsDigested([]int64) error
@@ -29,6 +54,11 @@ type Repository interface {
 	FindNotificationLogByKey(string) (domain.NotificationLog, bool, error)
 	ListNotificationLogs(string, string, int) ([]domain.NotificationLog, error)
 	UpdateNotificationLogStatus(int64, string, int, string) (domain.NotificationLog, error)
+	ListDueNotificationLogs(string, int, time.Time) ([]domain.NotificationLog, error)
+	UpdateNotificationLogDispatch(int64, string, int, int, string, string, time.Time) (domain.NotificationLog, error)
+	UpsertBusinessResultRetry(domain.BusinessResultRetry) (domain.BusinessResultRetry, error)
+	ListBusinessResultRetries(string, int) ([]domain.BusinessResultRetry, error)
+	UpdateBusinessResultRetryStatus(int64, string, int, string) (domain.BusinessResultRetry, error)
 	UpsertAppUser(domain.AppUser) (domain.AppUser, error)
 	BindMerchantUser(string, int64, string) (domain.MerchantUserBinding, error)
 	FindPrimaryOpenIDByMerchantID(string) (string, bool, error)

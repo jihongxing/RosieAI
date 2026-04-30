@@ -106,7 +106,7 @@ MVP 暂不做：
 |------|------|------|----------|
 | Phase 0：准备 | 第 1 周 | 环境、合规和试点资源准备 | 服务器、小程序主体、试点商家名单就绪 |
 | Phase 1：通信技术 POC | 已完成基础链路 | Rosie webhook、AI greeting、realtime listen verbs | 公网健康检查、webhook、AI greeting、接入号映射通过 |
-| Phase 1B：线路商务接入 | 并行推进 | 获取真实可入站 SIP Trunk / DID / IMS 线路 | 真实 PSTN 电话能进入 jambonz |
+| Phase 1B：线路商务接入 | 并行推进 | 获取真实可入站 SIP Trunk / DID / IMS 线路，并建立平台号码池 | 真实 PSTN 电话能进入 jambonz，平台可给商家分配 Rosie 接入号 |
 | Phase 2：业务层 MVP | 进行中，核心闭环已验证 | 通话记录、转写摘要、结构化信息、收件箱、定时汇总 | 模拟转写已能形成老板可看的来电结果，小程序基础页面和商家配置已接入 Go API |
 | Phase 2B：Go 正式业务后端 | 进行中 | 用 Go 承接正式业务 API 和 PostgreSQL 数据模型 | 核心 MVP 接口在 Go 中跑通，PostgreSQL store、通话详情、微信订阅消息发送、openid 绑定、小程序页面、商家配置和行业话术模板已接入 |
 | Phase 3：实时 AI 对话 | 线路就绪后 | Pipecat 跑通实时 STT -> LLM -> TTS | 电话中完成 3 轮自然问答 |
@@ -130,7 +130,7 @@ MVP 暂不做：
 | 试点商家招募 | 运营 | 3 到 10 家候选商家 |
 | 合规文案初稿 | 产品 / 法务 | 隐私协议、录音告知、AI 身份告知 |
 | 产品边界确认 | 产品 / 法务 / 运营 | 只做入站接听和受控上下文回拨，不做营销外呼 |
-| 开源许可证检查 | 技术 / 法务 | jambonz、Pipecat、Qwen3、FunASR、Fun-CosyVoice 许可证记录 |
+| 开源许可证检查 | 技术 / 法务 | 已形成 `docs/试点许可证检查清单.md` 和 `ops/check-third-party-licenses.ps1`，上线前按实际模型卡/商用授权复核 |
 
 ### 5.2 验收标准
 
@@ -188,11 +188,16 @@ MVP 暂不做：
 - 确认是否提供 SIP Trunk / DID / IMS 入站能力。
 - 确认是否支持无应答 / 忙线 / 不可及条件呼叫转移到 Rosie 幕后接入号。
 - 明确号码月租、并发、呼入计费、SLA、号码回收、故障赔偿。
+- 建立平台虚拟号码池 / 接入号管理：号码导入、可用 / 已分配 / 停用状态、供应商和 trunk 信息、绑定商家、释放回收。
+- 商家开通试用或正式服务时，若尚未绑定 Rosie 接入号，应从号码池自动分配；小程序呼叫转移指引必须展示该真实分配号。
+- 入站来电必须根据被叫接入号反查商家，未分配 / 已停用号码不得进入商家业务收件箱。
 - 海外 DID / Telnyx / Twilio 只作为可选兜底，不作为当前必做验证。
 
 退出标准：
 
 - 拿到至少 1 个真实可呼入到 jambonz 的测试号码。
+- Go API / Postgres 已有 `access_numbers` 号码池，运营后台可导入、查看、分配和释放号码。
+- 开通试用时能自动给商家绑定一个可用 Rosie 接入号，并生成条件呼叫转移指引。
 - 完成 20 通真实手机呼入测试。
 - 真实音频进入 `realtime-voice`，`audio_bytes > 0`。
 
@@ -240,12 +245,24 @@ MVP 暂不做：
 - `realtime-voice` 已能解析 listen metadata，建立实时会话上下文，并用模拟 STT 文本帧调用 `ai-agent /chat` 生成回复。
 - `realtime-voice` 已建立 STT -> `ai-agent` -> TTS turn pipeline，支持 HTTP STT / TTS provider，并可把 TTS 音频 bytes 通过 WebSocket 回写电话侧。
 - `realtime-voice` 已新增真实语音 provider：`funasr` STT 可接 FunASR / SenseVoice，`edge` TTS 可通过 ffmpeg 转成电话侧 PCM，`pipecat_http` 可把 session context / history / 音频转交给外部 Pipecat worker。
+- 小程序通知页已接入订阅消息授权入口，收件箱、详情、汇总、商家配置和通知偏好已补页面级错误态。
+- 基于原始来电上下文的手动回拨审计已落库，并支持 `requested` / `dialed` / `failed` / `canceled` 状态流转。
+- 通话详情页已支持处理动作，可把收件箱条目标记为已处理、归档或恢复待处理。
+- 运营侧试点价值看板已接入，可按本月 / 近 7 天 / 近 30 天查看来电、有效线索、预约、骚扰过滤、回拨和预估节省时间。
+- 运营侧试点管理后台基础版已接入，Go API 提供 `GET /admin`、`GET /admin/pilots`、`GET /admin/pilots/{merchant_id}` 和试点运营动作接口；页面已支持 KPI 总览、状态 / 关键词筛选、商家详情、开通试用、失败通知重派和失败上报重放。
+- 平台虚拟号码池 / 接入号管理已接入：Go API / Postgres 新增 `access_numbers`，运营侧可导入、查看、分配和释放接入号；商家开通试用时若未绑定接入号，会自动从可用号码池分配。
+- 号码池和 jambonz / SIP 路由绑定校验已接入：后台页面可展示 route-check 结果；`POST /admin/jambonz/config-export` 可导入 jambonz 号码 / application 配置快照，`POST /admin/jambonz/sync` 可通过 jambonz REST API 自动同步 applications / phone numbers，`GET /admin/access-numbers/route-check` 可检查号码是否绑定 SIP trunk、jambonz application、call hook/status hook 和商家绑定是否一致；缺路由元数据或未指向 Rosie call hook 的号码不会被自动分配给新开通商家。
+- 试点开通 / 套餐价值展示已接入，可展示 30 元/月基础版、14 天试用、开通步骤、条件呼叫转移引导和 +5 元/月老板音色增值服务占位。
+- 续费订单闭环已接入，可创建待支付订单、查看订单列表，并在支付成功后延长服务期；微信支付 JSAPI 下单、`wx.requestPayment` 参数返回、回调验签解密和成功续期已接入，待真实商户配置联调。
+- `realtime-voice` 已新增 `/latency-report`，可按最近 turns 聚合 STT / Agent / TTS / total 延迟 p50、p95、max，并用 1.5 秒目标线标记链路是否 degraded。
+- Phase 3 本地真实语音基线脚本已建立，`ops/phase3-latency-baseline.ps1` 可编排 ai-agent、FunASR / SenseVoice、sherpa-onnx TTS 和 smoke 音频；2026-04-30 实测 `total_ms.p95=1151ms`，低于 1.5 秒目标。
+- `call-webhook` 已内置试点电话告知，默认在欢迎语前说明 AI 接待和文字摘要用途，并把 `call_notice` 写入 realtime listen metadata；初稿见 `docs/试点合规告知初稿.md`。
+- 试点许可证检查清单已建立，覆盖 jambonz、Pipecat、Qwen3、FunASR / SenseVoice、CosyVoice、sherpa-onnx、Edge TTS 和云 LLM；`ops/check-third-party-licenses.ps1` 可生成本地依赖扫描报告。
 
 待完成：
 
-- 微信开发者工具真机联调、订阅消息授权和页面错误态完善。
-- 部署真实 FunASR / SenseVoice、TTS worker 或 Pipecat worker，完成真实电话侧音频联调和延迟测试。
-- 回拨审计字段。
+- 微信开发者工具真机联调，填入真实订阅消息模板 ID 并验证授权弹窗、openid 绑定和发送链路。
+- 将 Phase 3 延迟基线接入真实 jambonz 媒体流和 SIP Trunk 入站链路，完成真实电话侧音频联调。
 
 ### 8.2 验收标准
 
@@ -434,13 +451,11 @@ MVP 暂不做：
 
 从 2026-04-29 收工检查点开始，研发与商务分线推进：
 
-1. 用微信开发者工具联调 `apps/miniprogram`，验证收件箱、通话详情、汇总历史、通知偏好和商家配置页面。
-2. 部署真实 FunASR / SenseVoice、TTS worker 或 Pipecat worker，做电话侧端到端延迟测试。
-3. 建立基于原始来电上下文的手动回拨审计字段和接口。
-4. 商务并行寻找中国区可入站 SIP Trunk / DID / IMS 线路。
-5. 招募 3 家试点商家。
-6. 整理录音告知、隐私协议和 AI 身份告知初稿。
-7. 检查 jambonz、Pipecat、Qwen3、FunASR、Fun-CosyVoice 许可证。
+1. 将 `ops/phase3-latency-baseline.ps1` 的延迟基线迁移到真实 jambonz 媒体流和 SIP Trunk 入站链路。
+2. 用微信开发者工具联调 `apps/miniprogram`，验证收件箱、通话详情、汇总历史、通知偏好、商家配置和微信支付。
+3. 商务并行寻找中国区可入站 SIP Trunk / DID / IMS 线路。
+4. 招募 3 家试点商家。
+5. 按真实部署版本补齐模型卡、jambonz self-hosting license key、声音授权和第三方 NOTICE。
 
 ## 16. 成功标准
 

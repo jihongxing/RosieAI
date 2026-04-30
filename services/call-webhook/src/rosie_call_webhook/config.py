@@ -23,6 +23,8 @@ class Settings:
     realtime_listen_enabled: bool
     realtime_ws_url: str | None
     realtime_action_hook: str | None
+    call_notice_enabled: bool
+    call_notice_text: str
 
 
 def _optional_env(name: str) -> str | None:
@@ -50,4 +52,9 @@ def get_settings() -> Settings:
         realtime_listen_enabled=os.getenv("ROSIE_REALTIME_LISTEN_ENABLED", "false").lower() == "true",
         realtime_ws_url=_optional_env("ROSIE_REALTIME_WS_URL"),
         realtime_action_hook=_optional_env("ROSIE_REALTIME_ACTION_HOOK"),
+        call_notice_enabled=os.getenv("ROSIE_CALL_NOTICE_ENABLED", "true").lower() == "true",
+        call_notice_text=os.getenv(
+            "ROSIE_CALL_NOTICE_TEXT",
+            "本通话将由 AI 接待并生成文字摘要，用于通知商家跟进。",
+        ).strip(),
     )

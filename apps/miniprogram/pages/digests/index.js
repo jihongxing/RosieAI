@@ -11,7 +11,8 @@ Page({
     },
     items: [],
     isEmpty: false,
-    loading: false
+    loading: false,
+    errorMessage: ""
   },
 
   onLoad() {
@@ -28,7 +29,7 @@ Page({
   },
 
   loadAll() {
-    this.setData({ loading: true })
+    this.setData({ loading: true, errorMessage: "" })
     return Promise.all([
       api.previewDigest(this.data.merchantId),
       api.getDigests(this.data.merchantId)
@@ -45,10 +46,14 @@ Page({
             digestText: preview.digest_text || "暂无预览"
           },
           items,
-          isEmpty: items.length === 0
+          isEmpty: items.length === 0,
+          errorMessage: ""
         })
       })
-      .catch((err) => wx.showToast({ title: err.message, icon: "none" }))
+      .catch((err) => {
+        this.setData({ errorMessage: err.message, isEmpty: false })
+        wx.showToast({ title: err.message, icon: "none" })
+      })
       .finally(() => this.setData({ loading: false }))
   },
 
@@ -58,7 +63,10 @@ Page({
         wx.showToast({ title: "已生成", icon: "success" })
         this.loadAll()
       })
-      .catch((err) => wx.showToast({ title: err.message, icon: "none" }))
+      .catch((err) => {
+        this.setData({ errorMessage: err.message })
+        wx.showToast({ title: err.message, icon: "none" })
+      })
   },
 
   digestTypeText(value) {

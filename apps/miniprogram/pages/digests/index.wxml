@@ -27,6 +27,11 @@
   </view>
 
   <view wx:if="{{loading}}" class="empty">加载中</view>
+  <view wx:elif="{{errorMessage}}" class="error-card">
+    <view class="error-title">汇总加载失败</view>
+    <view class="error-message">{{errorMessage}}</view>
+    <button class="button secondary error-action" bindtap="loadAll">重试</button>
+  </view>
   <view wx:elif="{{isEmpty}}" class="empty">暂无汇总历史</view>
 
   <view wx:for="{{items}}" wx:key="id" class="card">

@@ -1,0 +1,93 @@
+.segments {
+  display: flex;
+}
+
+.segment {
+  flex: 1;
+  height: 72rpx;
+  margin: 0 0 0 12rpx;
+  padding: 0;
+  border: 1rpx solid #d8dde3;
+  border-radius: 8rpx;
+  background: #ffffff;
+  color: #25302b;
+  font-size: 26rpx;
+  line-height: 72rpx;
+}
+
+.segment:first-child {
+  margin-left: 0;
+}
+
+.segment::after {
+  border: 0;
+}
+
+.segment.active {
+  border-color: #1f6f5b;
+  background: #e8f4ef;
+  color: #1f6f5b;
+  font-weight: 700;
+}
+
+.open-button {
+  width: 100%;
+  margin-top: 18rpx;
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18rpx;
+  margin-bottom: 18rpx;
+}
+
+.metric-card {
+  min-height: 150rpx;
+  padding: 22rpx;
+  border: 1rpx solid #e4e7eb;
+  border-radius: 8rpx;
+  background: #ffffff;
+  box-sizing: border-box;
+}
+
+.metric-card.primary {
+  border-color: #b9ded3;
+  background: #e8f4ef;
+}
+
+.metric-label {
+  color: #6b7280;
+  font-size: 24rpx;
+}
+
+.metric-value {
+  margin-top: 12rpx;
+  color: #17201c;
+  font-size: 48rpx;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.section-title {
+  margin-bottom: 18rpx;
+  font-size: 30rpx;
+  font-weight: 700;
+}
+
+.field {
+  display: flex;
+  justify-content: space-between;
+  gap: 24rpx;
+  padding: 14rpx 0;
+  border-bottom: 1rpx solid #eef0f3;
+}
+
+.field:last-child {
+  border-bottom: 0;
+}
+
+.field text:last-child {
+  color: #17201c;
+  font-weight: 600;
+}

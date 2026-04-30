@@ -35,6 +35,7 @@ def test_inbound_call_returns_jambonz_verbs():
         body = response.json()
         assert body[0]["verb"] == "say"
         assert "测试理发店" in body[0]["text"]
+        assert "AI 接待" in body[0]["text"]
         assert body[-1]["verb"] == "hangup"
 
 
@@ -146,8 +147,37 @@ def test_realtime_listen_metadata_carries_system_prompt(monkeypatch: pytest.Monk
     listen_verb = next(item for item in body if item["verb"] == "listen")
     metadata = listen_verb["metadata"]
     assert metadata["system_prompt"] == "服务项目：剪发、烫染、护理"
+    assert "AI 接待" in metadata["call_notice"]
     assert metadata["merchant_profile"]["industry"] == "hair_salon"
     assert metadata["industry_template"]["key"] == "hair_salon"
+
+
+def test_call_notice_can_be_disabled(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(
+        app_module,
+        "settings",
+        replace(
+            app_module.settings,
+            call_notice_enabled=False,
+            call_notice_text="本通话将由 AI 接待并生成文字摘要。",
+        ),
+    )
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/webhooks/jambonz/call",
+            json={
+                "callSid": "call-no-notice",
+                "from": "+8613811112222",
+                "to": "8613736849910",
+                "callStatus": "trying",
+            },
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert "本通话将由 AI 接待" not in body[0]["text"]
+    assert "测试理发店" in body[0]["text"]
 
 
 def test_simulated_call_result_creates_inbox_item():

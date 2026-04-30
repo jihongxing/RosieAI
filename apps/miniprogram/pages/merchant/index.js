@@ -19,7 +19,8 @@ Page({
     faqText: "",
     promptPreview: "",
     loading: false,
-    saving: false
+    saving: false,
+    errorMessage: ""
   },
 
   onLoad() {
@@ -41,7 +42,7 @@ Page({
   },
 
   loadAll() {
-    this.setData({ loading: true })
+    this.setData({ loading: true, errorMessage: "" })
     return Promise.all([
       api.getIndustryTemplates(),
       api.getMerchantProfile(this.data.merchantId)
@@ -49,8 +50,12 @@ Page({
       .then(([templates, profile]) => {
         const items = templates.items || []
         this.applyProfile(items, profile)
+        this.setData({ errorMessage: "" })
       })
-      .catch((err) => wx.showToast({ title: err.message, icon: "none" }))
+      .catch((err) => {
+        this.setData({ errorMessage: err.message })
+        wx.showToast({ title: err.message, icon: "none" })
+      })
       .finally(() => this.setData({ loading: false }))
   },
 
@@ -110,8 +115,11 @@ Page({
       .then((payload) => {
         wx.showToast({ title: "已保存", icon: "success" })
         this.applyProfile(this.data.templates, payload)
+        this.setData({ errorMessage: "" })
       })
-      .catch((err) => wx.showToast({ title: err.message, icon: "none" }))
+      .catch((err) => {
+        wx.showToast({ title: err.message, icon: "none" })
+      })
       .finally(() => this.setData({ saving: false }))
   },
 

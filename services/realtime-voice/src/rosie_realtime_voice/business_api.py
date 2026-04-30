@@ -53,6 +53,64 @@ class BusinessAPIClient:
 
         return data if isinstance(data, dict) else {}
 
+    async def enqueue_business_result_retry(
+        self,
+        session_id: str,
+        payload: dict[str, Any],
+        attempt_count: int,
+        last_error: str,
+    ) -> dict[str, Any] | None:
+        if not self.enabled or not self.base_url or not session_id:
+            return None
+        try:
+            response = await self._http_client().post(
+                f"{self.base_url}/internal/realtime-call-result-retries",
+                json={
+                    "session_id": session_id,
+                    "payload": payload,
+                    "attempt_count": attempt_count,
+                    "last_error": last_error,
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+        except httpx.HTTPError as exc:
+            logger.warning("business api result retry enqueue failed: %s", exc)
+            raise
+
+        return data if isinstance(data, dict) else {}
+
+    async def list_business_result_retries(self) -> dict[str, Any] | None:
+        if not self.enabled or not self.base_url:
+            return None
+        try:
+            response = await self._http_client().get(
+                f"{self.base_url}/internal/realtime-call-result-retries",
+            )
+            response.raise_for_status()
+            data = response.json()
+        except httpx.HTTPError as exc:
+            logger.warning("business api result retry list failed: %s", exc)
+            raise
+
+        return data if isinstance(data, dict) else {}
+
+    async def flush_business_result_retries(self, max_attempts: int) -> dict[str, Any] | None:
+        if not self.enabled or not self.base_url:
+            return None
+        try:
+            response = await self._http_client().post(
+                f"{self.base_url}/internal/realtime-call-result-retries/flush",
+                params={"max_attempts": max_attempts},
+            )
+            response.raise_for_status()
+            data = response.json()
+        except httpx.HTTPError as exc:
+            logger.warning("business api result retry flush failed: %s", exc)
+            raise
+
+        return data if isinstance(data, dict) else {}
+
     async def close(self) -> None:
         if self._client:
             await self._client.aclose()

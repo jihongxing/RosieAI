@@ -6,6 +6,7 @@ Page({
     items: [],
     loading: false,
     isEmpty: false,
+    errorMessage: "",
     priorityText: {
       urgent: "紧急",
       high: "较高",
@@ -56,7 +57,7 @@ Page({
   },
 
   loadInbox() {
-    this.setData({ loading: true })
+    this.setData({ loading: true, errorMessage: "" })
     return api.getInbox(this.data.merchantId)
       .then((data) => {
         const items = (data.items || []).map((item) => ({
@@ -65,9 +66,12 @@ Page({
           statusLabel: this.data.statusText[item.status] || item.status || "新来电",
           createdAtLabel: this.formatTime(item.created_at)
         }))
-        this.setData({ items, isEmpty: items.length === 0 })
+        this.setData({ items, isEmpty: items.length === 0, errorMessage: "" })
       })
-      .catch((err) => this.toast(err.message))
+      .catch((err) => {
+        this.setData({ errorMessage: err.message, isEmpty: false })
+        this.toast(err.message)
+      })
       .finally(() => this.setData({ loading: false }))
   },
 

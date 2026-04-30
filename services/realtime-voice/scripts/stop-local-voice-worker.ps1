@@ -6,6 +6,7 @@ $pidPath = Join-Path $repoRoot "data\runtime\realtime-voice-worker.pid"
 if (Test-Path $pidPath) {
     $pidValue = Get-Content $pidPath
     Stop-Process -Id $pidValue -Force -ErrorAction SilentlyContinue
+    Remove-Item $pidPath -Force -ErrorAction SilentlyContinue
 }
 
 Get-CimInstance Win32_Process |

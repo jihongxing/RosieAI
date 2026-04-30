@@ -93,6 +93,29 @@ page {
   text-align: center;
 }
 
+.error-card {
+  padding: 36rpx 28rpx;
+  border: 1rpx solid #f0c7b6;
+  border-radius: 8rpx;
+  background: #fff7f2;
+  color: #7a2f12;
+  box-sizing: border-box;
+}
+
+.error-title {
+  font-weight: 700;
+}
+
+.error-message {
+  margin-top: 10rpx;
+  color: #9a4a24;
+  line-height: 1.5;
+}
+
+.error-action {
+  margin-top: 20rpx;
+}
+
 .button {
   height: 76rpx;
   padding: 0 24rpx;

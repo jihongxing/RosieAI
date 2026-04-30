@@ -1,0 +1,58 @@
+<view class="page">
+  <view class="header">
+    <view class="title">试点价值看板</view>
+    <view class="subtitle">{{periodText}} · {{merchantId}}</view>
+  </view>
+
+  <view class="card">
+    <view class="segments">
+      <button class="{{monthClass}}" data-period="month" bindtap="onPeriodTap">本月</button>
+      <button class="{{sevenDayClass}}" data-period="7d" bindtap="onPeriodTap">7 天</button>
+      <button class="{{thirtyDayClass}}" data-period="30d" bindtap="onPeriodTap">30 天</button>
+    </view>
+    <button class="button secondary open-button" bindtap="openOnboarding">开通与套餐</button>
+  </view>
+
+  <view wx:if="{{loading}}" class="empty">加载中</view>
+  <view wx:elif="{{errorMessage}}" class="error-card">
+    <view class="error-title">看板加载失败</view>
+    <view class="error-message">{{errorMessage}}</view>
+    <button class="button secondary error-action" bindtap="loadMetrics">重试</button>
+  </view>
+
+  <block wx:else>
+    <view class="metric-grid">
+      <view class="metric-card primary">
+        <view class="metric-label">总来电</view>
+        <view class="metric-value">{{metrics.total_calls}}</view>
+      </view>
+      <view class="metric-card">
+        <view class="metric-label">有效线索</view>
+        <view class="metric-value">{{metrics.effective_calls}}</view>
+      </view>
+      <view class="metric-card">
+        <view class="metric-label">预约意向</view>
+        <view class="metric-value">{{metrics.appointment_count}}</view>
+      </view>
+      <view class="metric-card">
+        <view class="metric-label">疑似骚扰</view>
+        <view class="metric-value">{{metrics.spam_count}}</view>
+      </view>
+    </view>
+
+    <view class="card">
+      <view class="section-title">处理效率</view>
+      <view class="field"><text class="label">需要跟进</text><text>{{metrics.followup_count}}</text></view>
+      <view class="field"><text class="label">紧急 / 高优先级</text><text>{{metrics.urgent_count}}</text></view>
+      <view class="field"><text class="label">已处理</text><text>{{metrics.handled_count}}</text></view>
+      <view class="field"><text class="label">已回拨</text><text>{{metrics.callback_dialed_count}} / {{metrics.callback_requested_count}}</text></view>
+    </view>
+
+    <view class="card">
+      <view class="section-title">试点价值</view>
+      <view class="field"><text class="label">预估节省</text><text>{{savedTimeText}}</text></view>
+      <view class="field"><text class="label">预约转化</text><text>{{appointmentRateText}}</text></view>
+      <view class="field"><text class="label">回拨完成</text><text>{{callbackRateText}}</text></view>
+    </view>
+  </block>
+</view>

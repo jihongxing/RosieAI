@@ -19,7 +19,6 @@ from .jambonz import (
     realtime_listen_verbs,
     unknown_number_verbs,
     welcome_text_verbs,
-    welcome_verbs,
 )
 from .notifier import notify_wecom
 from .summary import build_digest_text, fallback_summary, inbox_status, parse_summary_result
@@ -167,6 +166,22 @@ def _select_digest_channel(preferences: dict[str, Any]) -> str:
     if preferences["team_wecom_enabled"]:
         return "wecom_robot"
     return "wechat_subscription"
+
+
+def _call_notice_text() -> str:
+    if not settings.call_notice_enabled:
+        return ""
+    return settings.call_notice_text.strip()
+
+
+def _with_call_notice(greeting: str) -> str:
+    notice = _call_notice_text()
+    greeting = greeting.strip()
+    if not notice:
+        return greeting
+    if notice in greeting:
+        return greeting
+    return f"{notice}{greeting}"
 
 
 def _create_digest_for_items(
@@ -379,10 +394,10 @@ async def inbound_call(request: Request) -> list[dict[str, Any]]:
         )
 
     if settings.realtime_listen_enabled and settings.realtime_ws_url:
-        greeting = reply or (
+        greeting = _with_call_notice(reply or (
             f"您好，我是{merchant['merchant_name']}的 AI 前台 Rosie。"
             "机主现在不方便接电话，请您直接说来电事项。"
-        )
+        ))
         return realtime_listen_verbs(
             greeting,
             settings.realtime_ws_url,
@@ -393,6 +408,7 @@ async def inbound_call(request: Request) -> list[dict[str, Any]]:
                 "caller_number": call["from_number"],
                 "access_number": call["to_number"],
                 "call_sid": call["call_sid"],
+                "call_notice": _call_notice_text(),
                 "system_prompt": ai_context.get("system_prompt"),
                 "merchant_profile": ai_context.get("profile"),
                 "industry_template": ai_context.get("template"),
@@ -400,8 +416,14 @@ async def inbound_call(request: Request) -> list[dict[str, Any]]:
         )
 
     if reply:
-        return welcome_text_verbs(reply)
-    return welcome_verbs(merchant["merchant_name"])
+        return welcome_text_verbs(_with_call_notice(reply))
+    return welcome_text_verbs(
+        _with_call_notice(
+            f"您好，这里是{merchant['merchant_name']}的 AI 接线员 Rosie。"
+            "机主现在不方便接电话，我已经帮您记录本次来电。"
+            "这是最小验证版本，稍后会将来电信息通知机主。"
+        )
+    )
 
 
 @app.post("/webhooks/jambonz/status")

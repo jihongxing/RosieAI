@@ -19,6 +19,11 @@
   </view>
 
   <view wx:if="{{loading}}" class="empty">加载中</view>
+  <view wx:elif="{{errorMessage}}" class="error-card">
+    <view class="error-title">收件箱加载失败</view>
+    <view class="error-message">{{errorMessage}}</view>
+    <button class="button secondary error-action" bindtap="loadInbox">重试</button>
+  </view>
   <view wx:elif="{{isEmpty}}" class="empty">暂无待查看来电</view>
 
   <view wx:for="{{items}}" wx:key="id" class="card call-card" data-call-sid="{{item.call_sid}}" bindtap="openDetail">

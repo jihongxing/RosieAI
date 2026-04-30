@@ -4,6 +4,14 @@
     <view class="subtitle">控制 Rosie 什么时候提醒你处理来电</view>
   </view>
 
+  <view wx:if="{{loading}}" class="empty">加载中</view>
+  <view wx:elif="{{errorMessage}}" class="error-card">
+    <view class="error-title">通知偏好加载失败</view>
+    <view class="error-message">{{errorMessage}}</view>
+    <button class="button secondary error-action" bindtap="loadPreferences">重试</button>
+  </view>
+
+  <block wx:else>
   <view class="card">
     <view class="label">汇总频率</view>
     <view class="segments">
@@ -12,6 +20,17 @@
       <button class="{{manualModeClass}}" data-mode="manual" bindtap="onModeTap">手动</button>
     </view>
     <view class="meta">默认 20:00 汇总；午晚模式会使用 12:00 与 20:00。</view>
+  </view>
+
+  <view class="card">
+    <view class="field">
+      <view>
+        <view class="value">微信订阅消息</view>
+        <view class="label">汇总和紧急提醒</view>
+      </view>
+      <view class="{{subscribeStatusClass}}">{{subscribeStatusText}}</view>
+    </view>
+    <button class="button secondary subscribe-button" loading="{{subscribing}}" disabled="{{subscribing}}" bindtap="authorizeSubscribe">授权提醒</button>
   </view>
 
   <view class="card">
@@ -44,5 +63,6 @@
     <view class="meta">多个时间用英文逗号分隔</view>
   </view>
 
-  <button class="button save-button" bindtap="save">保存设置</button>
+  <button class="button save-button" loading="{{saving}}" disabled="{{saving}}" bindtap="save">保存设置</button>
+  </block>
 </view>

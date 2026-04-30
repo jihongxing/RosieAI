@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -31,6 +32,10 @@ func (p *Postgres) Close() {
 	p.pool.Close()
 }
 
+func (p *Postgres) Ping(ctx context.Context) error {
+	return p.pool.Ping(ctx)
+}
+
 func (p *Postgres) UpsertMerchant(merchant domain.Merchant) (domain.Merchant, error) {
 	merchant.AccessNumber = NormalizeNumber(merchant.AccessNumber)
 	row := p.pool.QueryRow(context.Background(), `
@@ -38,7 +43,7 @@ func (p *Postgres) UpsertMerchant(merchant domain.Merchant) (domain.Merchant, er
 			merchant_id, merchant_name, access_number, original_number,
 			transfer_phone, enabled
 		)
-		VALUES ($1, $2, $3, NULLIF($4, ''), NULLIF($5, ''), $6)
+		VALUES ($1, $2, NULLIF($3, ''), NULLIF($4, ''), NULLIF($5, ''), $6)
 		ON CONFLICT (merchant_id) DO UPDATE SET
 			merchant_name = EXCLUDED.merchant_name,
 			access_number = EXCLUDED.access_number,
@@ -65,6 +70,9 @@ func (p *Postgres) UpsertMerchant(merchant domain.Merchant) (domain.Merchant, er
 		return domain.Merchant{}, err
 	}
 	if _, err := p.EnsurePreferences(saved.MerchantID); err != nil {
+		return domain.Merchant{}, err
+	}
+	if _, err := p.EnsureServiceSubscription(saved.MerchantID); err != nil {
 		return domain.Merchant{}, err
 	}
 	if _, err := p.EnsureMerchantProfile(saved.MerchantID); err != nil {
@@ -143,6 +151,693 @@ func (p *Postgres) findMerchant(query string, arg string) (domain.Merchant, bool
 		return domain.Merchant{}, false, err
 	}
 	return item, true, nil
+}
+
+func (p *Postgres) UpsertAccessNumber(item domain.AccessNumber) (domain.AccessNumber, error) {
+	item.Number = NormalizeNumber(item.Number)
+	if item.Number == "" {
+		return domain.AccessNumber{}, ErrNotFound
+	}
+	if item.Status == "" {
+		item.Status = "available"
+	}
+	row := p.pool.QueryRow(context.Background(), `
+		INSERT INTO access_numbers (
+			number, provider, provider_number_id, trunk_id,
+			jambonz_application_id, jambonz_application_name, jambonz_call_hook_url,
+			jambonz_status_hook_url, jambonz_config_synced_at, status, merchant_id, notes
+		)
+		VALUES (
+			$1, NULLIF($2, ''), NULLIF($3, ''), NULLIF($4, ''),
+			NULLIF($5, ''), NULLIF($6, ''), NULLIF($7, ''),
+			NULLIF($8, ''), $9, $10, NULLIF($11, ''), NULLIF($12, '')
+		)
+		ON CONFLICT (number) DO UPDATE SET
+			provider = EXCLUDED.provider,
+			provider_number_id = EXCLUDED.provider_number_id,
+			trunk_id = EXCLUDED.trunk_id,
+			jambonz_application_id = EXCLUDED.jambonz_application_id,
+			jambonz_application_name = EXCLUDED.jambonz_application_name,
+			jambonz_call_hook_url = EXCLUDED.jambonz_call_hook_url,
+			jambonz_status_hook_url = EXCLUDED.jambonz_status_hook_url,
+			jambonz_config_synced_at = EXCLUDED.jambonz_config_synced_at,
+			status = CASE
+				WHEN access_numbers.status = 'assigned' AND EXCLUDED.status = 'available' THEN access_numbers.status
+				ELSE EXCLUDED.status
+			END,
+			merchant_id = COALESCE(EXCLUDED.merchant_id, access_numbers.merchant_id),
+			notes = EXCLUDED.notes,
+			updated_at = now()
+		RETURNING id, number, COALESCE(provider, ''), COALESCE(provider_number_id, ''),
+			COALESCE(trunk_id, ''), COALESCE(jambonz_application_id, ''), status,
+			COALESCE(merchant_id, ''), COALESCE(notes, ''),
+			COALESCE(jambonz_application_name, ''), COALESCE(jambonz_call_hook_url, ''),
+			COALESCE(jambonz_status_hook_url, ''), jambonz_config_synced_at,
+			assigned_at, released_at,
+			created_at, updated_at
+	`, item.Number, item.Provider, item.ProviderNumberID, item.TrunkID,
+		item.JambonzApplicationID, item.JambonzApplicationName, item.JambonzCallHookURL,
+		item.JambonzStatusHookURL, item.JambonzConfigSyncedAt, item.Status, item.MerchantID, item.Notes)
+	return scanAccessNumber(row)
+}
+
+func (p *Postgres) ListAccessNumbers(status string, limit int) ([]domain.AccessNumber, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := p.pool.Query(context.Background(), `
+		SELECT id, number, COALESCE(provider, ''), COALESCE(provider_number_id, ''),
+			COALESCE(trunk_id, ''), COALESCE(jambonz_application_id, ''), status,
+			COALESCE(merchant_id, ''), COALESCE(notes, ''),
+			COALESCE(jambonz_application_name, ''), COALESCE(jambonz_call_hook_url, ''),
+			COALESCE(jambonz_status_hook_url, ''), jambonz_config_synced_at,
+			assigned_at, released_at,
+			created_at, updated_at
+		FROM access_numbers
+		WHERE ($1 = '' OR status = $1)
+		ORDER BY status, created_at DESC
+		LIMIT $2
+	`, status, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []domain.AccessNumber
+	for rows.Next() {
+		item, err := scanAccessNumber(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (p *Postgres) FindAccessNumberByNumber(number string) (domain.AccessNumber, bool, error) {
+	item, err := scanAccessNumber(p.pool.QueryRow(context.Background(), `
+		SELECT id, number, COALESCE(provider, ''), COALESCE(provider_number_id, ''),
+			COALESCE(trunk_id, ''), COALESCE(jambonz_application_id, ''), status,
+			COALESCE(merchant_id, ''), COALESCE(notes, ''),
+			COALESCE(jambonz_application_name, ''), COALESCE(jambonz_call_hook_url, ''),
+			COALESCE(jambonz_status_hook_url, ''), jambonz_config_synced_at,
+			assigned_at, released_at,
+			created_at, updated_at
+		FROM access_numbers
+		WHERE number = $1
+	`, NormalizeNumber(number)))
+	if err == pgx.ErrNoRows {
+		return domain.AccessNumber{}, false, nil
+	}
+	if err != nil {
+		return domain.AccessNumber{}, false, err
+	}
+	return item, true, nil
+}
+
+func (p *Postgres) AssignAccessNumber(merchantID string, number string, assignedAt time.Time) (domain.AccessNumber, error) {
+	return p.assignAccessNumber(context.Background(), merchantID, NormalizeNumber(number), assignedAt)
+}
+
+func (p *Postgres) AutoAssignAccessNumber(merchantID string, assignedAt time.Time) (domain.AccessNumber, bool, error) {
+	ctx := context.Background()
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return domain.AccessNumber{}, false, err
+	}
+	defer tx.Rollback(ctx)
+
+	existing, err := scanAccessNumber(tx.QueryRow(ctx, `
+		SELECT id, number, COALESCE(provider, ''), COALESCE(provider_number_id, ''),
+			COALESCE(trunk_id, ''), COALESCE(jambonz_application_id, ''), status,
+			COALESCE(merchant_id, ''), COALESCE(notes, ''),
+			COALESCE(jambonz_application_name, ''), COALESCE(jambonz_call_hook_url, ''),
+			COALESCE(jambonz_status_hook_url, ''), jambonz_config_synced_at,
+			assigned_at, released_at,
+			created_at, updated_at
+		FROM access_numbers
+		WHERE status = 'assigned' AND merchant_id = $1
+		ORDER BY assigned_at DESC NULLS LAST, created_at DESC
+		LIMIT 1
+	`, merchantID))
+	if err == nil {
+		if err := tx.Commit(ctx); err != nil {
+			return domain.AccessNumber{}, false, err
+		}
+		return existing, true, nil
+	}
+	if err != pgx.ErrNoRows {
+		return domain.AccessNumber{}, false, err
+	}
+
+	var number string
+	err = tx.QueryRow(ctx, `
+		SELECT number
+		FROM access_numbers
+		WHERE status = 'available' AND merchant_id IS NULL
+		ORDER BY created_at ASC
+		LIMIT 1
+		FOR UPDATE SKIP LOCKED
+	`).Scan(&number)
+	if err == pgx.ErrNoRows {
+		if err := tx.Commit(ctx); err != nil {
+			return domain.AccessNumber{}, false, err
+		}
+		return domain.AccessNumber{}, false, nil
+	}
+	if err != nil {
+		return domain.AccessNumber{}, false, err
+	}
+	item, err := p.assignAccessNumberTx(ctx, tx, merchantID, number, assignedAt)
+	if err != nil {
+		return domain.AccessNumber{}, false, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.AccessNumber{}, false, err
+	}
+	return item, true, nil
+}
+
+func (p *Postgres) ReleaseAccessNumber(number string, releasedAt time.Time) (domain.AccessNumber, error) {
+	ctx := context.Background()
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return domain.AccessNumber{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	current, err := scanAccessNumber(tx.QueryRow(ctx, `
+		SELECT id, number, COALESCE(provider, ''), COALESCE(provider_number_id, ''),
+			COALESCE(trunk_id, ''), COALESCE(jambonz_application_id, ''), status,
+			COALESCE(merchant_id, ''), COALESCE(notes, ''),
+			COALESCE(jambonz_application_name, ''), COALESCE(jambonz_call_hook_url, ''),
+			COALESCE(jambonz_status_hook_url, ''), jambonz_config_synced_at,
+			assigned_at, released_at,
+			created_at, updated_at
+		FROM access_numbers
+		WHERE number = $1
+		FOR UPDATE
+	`, NormalizeNumber(number)))
+	if err == pgx.ErrNoRows {
+		return domain.AccessNumber{}, ErrNotFound
+	}
+	if err != nil {
+		return domain.AccessNumber{}, err
+	}
+	if current.MerchantID != "" {
+		if _, err := tx.Exec(ctx, `
+			UPDATE merchants
+			SET access_number = NULL, updated_at = now()
+			WHERE merchant_id = $1 AND access_number = $2
+		`, current.MerchantID, current.Number); err != nil {
+			return domain.AccessNumber{}, err
+		}
+	}
+	item, err := scanAccessNumber(tx.QueryRow(ctx, `
+		UPDATE access_numbers
+		SET status = 'available',
+			merchant_id = NULL,
+			assigned_at = NULL,
+			released_at = $2,
+			updated_at = now()
+		WHERE number = $1
+		RETURNING id, number, COALESCE(provider, ''), COALESCE(provider_number_id, ''),
+			COALESCE(trunk_id, ''), COALESCE(jambonz_application_id, ''), status,
+			COALESCE(merchant_id, ''), COALESCE(notes, ''),
+			COALESCE(jambonz_application_name, ''), COALESCE(jambonz_call_hook_url, ''),
+			COALESCE(jambonz_status_hook_url, ''), jambonz_config_synced_at,
+			assigned_at, released_at,
+			created_at, updated_at
+	`, current.Number, releasedAt))
+	if err != nil {
+		return domain.AccessNumber{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.AccessNumber{}, err
+	}
+	return item, nil
+}
+
+func (p *Postgres) assignAccessNumber(ctx context.Context, merchantID string, number string, assignedAt time.Time) (domain.AccessNumber, error) {
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return domain.AccessNumber{}, err
+	}
+	defer tx.Rollback(ctx)
+	item, err := p.assignAccessNumberTx(ctx, tx, merchantID, number, assignedAt)
+	if err != nil {
+		return domain.AccessNumber{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.AccessNumber{}, err
+	}
+	return item, nil
+}
+
+func (p *Postgres) assignAccessNumberTx(ctx context.Context, tx pgx.Tx, merchantID string, number string, assignedAt time.Time) (domain.AccessNumber, error) {
+	var enabled bool
+	if err := tx.QueryRow(ctx, `
+		SELECT enabled
+		FROM merchants
+		WHERE merchant_id = $1
+		FOR UPDATE
+	`, merchantID).Scan(&enabled); err == pgx.ErrNoRows {
+		return domain.AccessNumber{}, ErrNotFound
+	} else if err != nil {
+		return domain.AccessNumber{}, err
+	}
+	if !enabled {
+		return domain.AccessNumber{}, ErrNotFound
+	}
+
+	current, err := scanAccessNumber(tx.QueryRow(ctx, `
+		SELECT id, number, COALESCE(provider, ''), COALESCE(provider_number_id, ''),
+			COALESCE(trunk_id, ''), COALESCE(jambonz_application_id, ''), status,
+			COALESCE(merchant_id, ''), COALESCE(notes, ''),
+			COALESCE(jambonz_application_name, ''), COALESCE(jambonz_call_hook_url, ''),
+			COALESCE(jambonz_status_hook_url, ''), jambonz_config_synced_at,
+			assigned_at, released_at,
+			created_at, updated_at
+		FROM access_numbers
+		WHERE number = $1
+		FOR UPDATE
+	`, number))
+	if err == pgx.ErrNoRows {
+		return domain.AccessNumber{}, ErrNotFound
+	}
+	if err != nil {
+		return domain.AccessNumber{}, err
+	}
+	if current.Status == "disabled" || (current.MerchantID != "" && current.MerchantID != merchantID) {
+		return domain.AccessNumber{}, ErrNotFound
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE access_numbers
+		SET status = 'available',
+			merchant_id = NULL,
+			assigned_at = NULL,
+			released_at = $2,
+			updated_at = now()
+		WHERE merchant_id = $1 AND status = 'assigned' AND number <> $3
+	`, merchantID, assignedAt, number); err != nil {
+		return domain.AccessNumber{}, err
+	}
+	item, err := scanAccessNumber(tx.QueryRow(ctx, `
+		UPDATE access_numbers
+		SET status = 'assigned',
+			merchant_id = $2,
+			assigned_at = $3,
+			released_at = NULL,
+			updated_at = now()
+		WHERE number = $1
+		RETURNING id, number, COALESCE(provider, ''), COALESCE(provider_number_id, ''),
+			COALESCE(trunk_id, ''), COALESCE(jambonz_application_id, ''), status,
+			COALESCE(merchant_id, ''), COALESCE(notes, ''),
+			COALESCE(jambonz_application_name, ''), COALESCE(jambonz_call_hook_url, ''),
+			COALESCE(jambonz_status_hook_url, ''), jambonz_config_synced_at,
+			assigned_at, released_at,
+			created_at, updated_at
+	`, number, merchantID, assignedAt))
+	if err != nil {
+		return domain.AccessNumber{}, err
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE merchants
+		SET access_number = $2, updated_at = now()
+		WHERE merchant_id = $1
+	`, merchantID, number); err != nil {
+		return domain.AccessNumber{}, err
+	}
+	return item, nil
+}
+
+type accessNumberScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanAccessNumber(row accessNumberScanner) (domain.AccessNumber, error) {
+	var item domain.AccessNumber
+	var jambonzConfigSyncedAt sql.NullTime
+	var assignedAt sql.NullTime
+	var releasedAt sql.NullTime
+	if err := row.Scan(
+		&item.ID,
+		&item.Number,
+		&item.Provider,
+		&item.ProviderNumberID,
+		&item.TrunkID,
+		&item.JambonzApplicationID,
+		&item.Status,
+		&item.MerchantID,
+		&item.Notes,
+		&item.JambonzApplicationName,
+		&item.JambonzCallHookURL,
+		&item.JambonzStatusHookURL,
+		&jambonzConfigSyncedAt,
+		&assignedAt,
+		&releasedAt,
+		&item.CreatedAt,
+		&item.UpdatedAt,
+	); err != nil {
+		return domain.AccessNumber{}, err
+	}
+	if jambonzConfigSyncedAt.Valid {
+		item.JambonzConfigSyncedAt = &jambonzConfigSyncedAt.Time
+	}
+	if assignedAt.Valid {
+		item.AssignedAt = &assignedAt.Time
+	}
+	if releasedAt.Valid {
+		item.ReleasedAt = &releasedAt.Time
+	}
+	return item, nil
+}
+
+func (p *Postgres) EnsureServiceSubscription(merchantID string) (domain.ServiceSubscription, error) {
+	_, err := p.pool.Exec(context.Background(), `
+		INSERT INTO merchant_service_subscriptions (merchant_id)
+		VALUES ($1)
+		ON CONFLICT (merchant_id) DO NOTHING
+	`, merchantID)
+	if err != nil {
+		return domain.ServiceSubscription{}, err
+	}
+	return p.findServiceSubscription(merchantID)
+}
+
+func (p *Postgres) ActivateTrialSubscription(merchantID string, planCode string, startedAt time.Time, endsAt time.Time) (domain.ServiceSubscription, error) {
+	row := p.pool.QueryRow(context.Background(), `
+		INSERT INTO merchant_service_subscriptions (
+			merchant_id, plan_code, status, trial_started_at, trial_ends_at,
+			current_period_ends_at, activated_at
+		)
+		VALUES ($1, $2, 'trialing', $3, $4, $4, $3)
+		ON CONFLICT (merchant_id) DO UPDATE SET
+			plan_code = CASE
+				WHEN merchant_service_subscriptions.status IN ('active', 'trialing')
+					THEN merchant_service_subscriptions.plan_code
+				ELSE EXCLUDED.plan_code
+			END,
+			status = CASE
+				WHEN merchant_service_subscriptions.status IN ('active', 'trialing')
+					THEN merchant_service_subscriptions.status
+				ELSE 'trialing'
+			END,
+			trial_started_at = CASE
+				WHEN merchant_service_subscriptions.status IN ('active', 'trialing')
+					THEN merchant_service_subscriptions.trial_started_at
+				ELSE EXCLUDED.trial_started_at
+			END,
+			trial_ends_at = CASE
+				WHEN merchant_service_subscriptions.status IN ('active', 'trialing')
+					THEN merchant_service_subscriptions.trial_ends_at
+				ELSE EXCLUDED.trial_ends_at
+			END,
+			current_period_ends_at = CASE
+				WHEN merchant_service_subscriptions.status IN ('active', 'trialing')
+					THEN merchant_service_subscriptions.current_period_ends_at
+				ELSE EXCLUDED.current_period_ends_at
+			END,
+			activated_at = COALESCE(merchant_service_subscriptions.activated_at, EXCLUDED.activated_at),
+			updated_at = now()
+		RETURNING merchant_id, plan_code, status, trial_started_at, trial_ends_at,
+			current_period_ends_at, activated_at, created_at, updated_at
+	`, merchantID, valueOr(planCode, "pilot_basic"), startedAt, endsAt)
+	return scanServiceSubscription(row)
+}
+
+func (p *Postgres) RenewServiceSubscription(merchantID string, planCode string, paidAt time.Time, months int) (domain.ServiceSubscription, error) {
+	if months <= 0 {
+		months = 1
+	}
+	row := p.pool.QueryRow(context.Background(), `
+		INSERT INTO merchant_service_subscriptions (
+			merchant_id, plan_code, status, current_period_ends_at, activated_at
+		)
+		VALUES ($1, $2, 'active', $3::timestamptz + ($4::text || ' months')::interval, $3)
+		ON CONFLICT (merchant_id) DO UPDATE SET
+			plan_code = EXCLUDED.plan_code,
+			status = 'active',
+			current_period_ends_at = (
+				GREATEST(
+					COALESCE(merchant_service_subscriptions.current_period_ends_at, $3::timestamptz),
+					$3::timestamptz
+				) + ($4::text || ' months')::interval
+			),
+			activated_at = COALESCE(merchant_service_subscriptions.activated_at, $3),
+			updated_at = now()
+		RETURNING merchant_id, plan_code, status, trial_started_at, trial_ends_at,
+			current_period_ends_at, activated_at, created_at, updated_at
+	`, merchantID, valueOr(planCode, "pilot_basic"), paidAt, months)
+	return scanServiceSubscription(row)
+}
+
+func (p *Postgres) InsertPaymentOrder(order domain.PaymentOrder) (domain.PaymentOrder, error) {
+	row := p.pool.QueryRow(context.Background(), `
+		INSERT INTO payment_orders (
+			merchant_id, order_no, order_type, plan_code, add_on_code,
+			amount_cents, currency, status, provider, provider_trade_no, prepay_id
+		)
+		VALUES ($1, $2, $3, $4, NULLIF($5, ''), $6, $7, $8, $9, NULLIF($10, ''), NULLIF($11, ''))
+		ON CONFLICT (order_no) DO UPDATE SET
+			updated_at = now()
+		RETURNING id, merchant_id, order_no, order_type, plan_code, COALESCE(add_on_code, ''),
+			amount_cents, currency, status, provider, COALESCE(provider_trade_no, ''),
+			COALESCE(prepay_id, ''), paid_at, created_at, updated_at
+	`, order.MerchantID, order.OrderNo, valueOr(order.OrderType, "renewal"),
+		valueOr(order.PlanCode, "pilot_basic"), order.AddOnCode, order.AmountCents,
+		valueOr(order.Currency, "CNY"), valueOr(order.Status, "pending"),
+		valueOr(order.Provider, "wechat_pay"), order.ProviderTradeNo, order.PrepayID)
+	return scanPaymentOrder(row)
+}
+
+func (p *Postgres) FindPaymentOrderByNo(orderNo string) (domain.PaymentOrder, bool, error) {
+	row := p.pool.QueryRow(context.Background(), `
+		SELECT id, merchant_id, order_no, order_type, plan_code, COALESCE(add_on_code, ''),
+			amount_cents, currency, status, provider, COALESCE(provider_trade_no, ''),
+			COALESCE(prepay_id, ''), paid_at, created_at, updated_at
+		FROM payment_orders
+		WHERE order_no = $1
+	`, orderNo)
+	item, err := scanPaymentOrder(row)
+	if err == pgx.ErrNoRows {
+		return domain.PaymentOrder{}, false, nil
+	}
+	if err != nil {
+		return domain.PaymentOrder{}, false, err
+	}
+	return item, true, nil
+}
+
+func (p *Postgres) ListPaymentOrders(merchantID string, limit int) ([]domain.PaymentOrder, error) {
+	rows, err := p.pool.Query(context.Background(), `
+		SELECT id, merchant_id, order_no, order_type, plan_code, COALESCE(add_on_code, ''),
+			amount_cents, currency, status, provider, COALESCE(provider_trade_no, ''),
+			COALESCE(prepay_id, ''), paid_at, created_at, updated_at
+		FROM payment_orders
+		WHERE merchant_id = $1
+		ORDER BY id DESC
+		LIMIT $2
+	`, merchantID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []domain.PaymentOrder
+	for rows.Next() {
+		item, err := scanPaymentOrder(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (p *Postgres) UpdatePaymentOrderPrepay(orderNo string, prepayID string) (domain.PaymentOrder, error) {
+	row := p.pool.QueryRow(context.Background(), `
+		UPDATE payment_orders
+		SET prepay_id = NULLIF($2, ''),
+			updated_at = now()
+		WHERE order_no = $1
+		RETURNING id, merchant_id, order_no, order_type, plan_code, COALESCE(add_on_code, ''),
+			amount_cents, currency, status, provider, COALESCE(provider_trade_no, ''),
+			COALESCE(prepay_id, ''), paid_at, created_at, updated_at
+	`, orderNo, prepayID)
+	item, err := scanPaymentOrder(row)
+	if err == pgx.ErrNoRows {
+		return domain.PaymentOrder{}, ErrNotFound
+	}
+	return item, err
+}
+
+func (p *Postgres) MarkPaymentOrderPaid(orderNo string, providerTradeNo string, paidAt time.Time) (domain.PaymentOrder, error) {
+	row := p.pool.QueryRow(context.Background(), `
+		UPDATE payment_orders
+		SET status = 'paid',
+			provider_trade_no = COALESCE(NULLIF($2, ''), provider_trade_no),
+			paid_at = COALESCE(paid_at, $3),
+			updated_at = now()
+		WHERE order_no = $1
+		RETURNING id, merchant_id, order_no, order_type, plan_code, COALESCE(add_on_code, ''),
+			amount_cents, currency, status, provider, COALESCE(provider_trade_no, ''),
+			COALESCE(prepay_id, ''), paid_at, created_at, updated_at
+	`, orderNo, providerTradeNo, paidAt)
+	item, err := scanPaymentOrder(row)
+	if err == pgx.ErrNoRows {
+		return domain.PaymentOrder{}, ErrNotFound
+	}
+	return item, err
+}
+
+func scanPaymentOrder(row pgx.Row) (domain.PaymentOrder, error) {
+	var item domain.PaymentOrder
+	var paidAt sql.NullTime
+	err := row.Scan(
+		&item.ID,
+		&item.MerchantID,
+		&item.OrderNo,
+		&item.OrderType,
+		&item.PlanCode,
+		&item.AddOnCode,
+		&item.AmountCents,
+		&item.Currency,
+		&item.Status,
+		&item.Provider,
+		&item.ProviderTradeNo,
+		&item.PrepayID,
+		&paidAt,
+		&item.CreatedAt,
+		&item.UpdatedAt,
+	)
+	if paidAt.Valid {
+		item.PaidAt = &paidAt.Time
+	}
+	return item, err
+}
+
+func (p *Postgres) findServiceSubscription(merchantID string) (domain.ServiceSubscription, error) {
+	row := p.pool.QueryRow(context.Background(), `
+		SELECT merchant_id, plan_code, status, trial_started_at, trial_ends_at,
+			current_period_ends_at, activated_at, created_at, updated_at
+		FROM merchant_service_subscriptions
+		WHERE merchant_id = $1
+	`, merchantID)
+	return scanServiceSubscription(row)
+}
+
+func scanServiceSubscription(row pgx.Row) (domain.ServiceSubscription, error) {
+	var item domain.ServiceSubscription
+	var trialStartedAt sql.NullTime
+	var trialEndsAt sql.NullTime
+	var currentPeriodEndsAt sql.NullTime
+	var activatedAt sql.NullTime
+	err := row.Scan(
+		&item.MerchantID,
+		&item.PlanCode,
+		&item.Status,
+		&trialStartedAt,
+		&trialEndsAt,
+		&currentPeriodEndsAt,
+		&activatedAt,
+		&item.CreatedAt,
+		&item.UpdatedAt,
+	)
+	if trialStartedAt.Valid {
+		item.TrialStartedAt = &trialStartedAt.Time
+	}
+	if trialEndsAt.Valid {
+		item.TrialEndsAt = &trialEndsAt.Time
+	}
+	if currentPeriodEndsAt.Valid {
+		item.CurrentPeriodEndsAt = &currentPeriodEndsAt.Time
+	}
+	if activatedAt.Valid {
+		item.ActivatedAt = &activatedAt.Time
+	}
+	return item, err
+}
+
+func (p *Postgres) GetValueMetrics(merchantID string, since time.Time, until time.Time) (domain.ValueMetrics, error) {
+	metrics := domain.ValueMetrics{
+		MerchantID: merchantID,
+		Since:      since,
+		Until:      until,
+	}
+	var totalCalls int64
+	var effectiveCalls int64
+	var appointmentCount int64
+	var spamCount int64
+	var followupCount int64
+	var urgentCount int64
+	var handledCount int64
+	var archivedCount int64
+	var callbackRequestedCount int64
+	var callbackDialedCount int64
+	err := p.pool.QueryRow(context.Background(), `
+		SELECT
+			(SELECT COUNT(*) FROM calls
+				WHERE merchant_id = $1 AND created_at >= $2 AND created_at < $3),
+			(SELECT COUNT(*) FROM inbox_items
+				WHERE merchant_id = $1 AND created_at >= $2 AND created_at < $3
+					AND status <> 'filtered'),
+			(SELECT COUNT(*) FROM call_summaries
+				WHERE merchant_id = $1 AND created_at >= $2 AND created_at < $3
+					AND intent = 'appointment'),
+			(SELECT COUNT(DISTINCT call_sid) FROM (
+				SELECT call_sid FROM call_summaries
+					WHERE merchant_id = $1 AND created_at >= $2 AND created_at < $3
+						AND intent = 'spam'
+				UNION
+				SELECT call_sid FROM inbox_items
+					WHERE merchant_id = $1 AND created_at >= $2 AND created_at < $3
+						AND status = 'filtered'
+			) spam_items),
+			(SELECT COUNT(*) FROM inbox_items
+				WHERE merchant_id = $1 AND created_at >= $2 AND created_at < $3
+					AND need_human_followup = true),
+			(SELECT COUNT(*) FROM inbox_items
+				WHERE merchant_id = $1 AND created_at >= $2 AND created_at < $3
+					AND priority IN ('urgent', 'high')),
+			(SELECT COUNT(*) FROM inbox_items
+				WHERE merchant_id = $1 AND created_at >= $2 AND created_at < $3
+					AND status = 'handled'),
+			(SELECT COUNT(*) FROM inbox_items
+				WHERE merchant_id = $1 AND created_at >= $2 AND created_at < $3
+					AND status = 'archived'),
+			(SELECT COUNT(*) FROM callback_requests
+				WHERE merchant_id = $1 AND created_at >= $2 AND created_at < $3),
+			(SELECT COUNT(*) FROM callback_requests
+				WHERE merchant_id = $1 AND created_at >= $2 AND created_at < $3
+					AND status = 'dialed')
+	`, merchantID, since, until).Scan(
+		&totalCalls,
+		&effectiveCalls,
+		&appointmentCount,
+		&spamCount,
+		&followupCount,
+		&urgentCount,
+		&handledCount,
+		&archivedCount,
+		&callbackRequestedCount,
+		&callbackDialedCount,
+	)
+	if err != nil {
+		return domain.ValueMetrics{}, err
+	}
+	metrics.TotalCalls = int(totalCalls)
+	metrics.EffectiveCalls = int(effectiveCalls)
+	metrics.AppointmentCount = int(appointmentCount)
+	metrics.SpamCount = int(spamCount)
+	metrics.FollowupCount = int(followupCount)
+	metrics.UrgentCount = int(urgentCount)
+	metrics.HandledCount = int(handledCount)
+	metrics.ArchivedCount = int(archivedCount)
+	metrics.CallbackRequestedCount = int(callbackRequestedCount)
+	metrics.CallbackDialedCount = int(callbackDialedCount)
+	finalizeValueMetrics(&metrics)
+	return metrics, nil
 }
 
 func (p *Postgres) EnsureMerchantProfile(merchantID string) (domain.MerchantProfile, error) {
@@ -460,6 +1155,21 @@ func (p *Postgres) ListInboxItems(merchantID string, limit int) ([]domain.InboxI
 	`, merchantID, limit)
 }
 
+func (p *Postgres) UpdateInboxItemStatus(callSID string, status string) (domain.InboxItem, error) {
+	row := p.pool.QueryRow(context.Background(), `
+		UPDATE inbox_items
+		SET status = $2, updated_at = now()
+		WHERE call_sid = $1
+		RETURNING id, merchant_id, call_sid, item_type, title, body, priority,
+			status, need_human_followup, digest_status, created_at, updated_at
+	`, callSID, status)
+	item, err := scanInboxItem(row)
+	if err == pgx.ErrNoRows {
+		return domain.InboxItem{}, ErrNotFound
+	}
+	return item, err
+}
+
 func (p *Postgres) ListPendingDigestItems(merchantID string, limit int) ([]domain.InboxItem, error) {
 	return p.listInboxItems(`
 		SELECT id, merchant_id, call_sid, item_type, title, body, priority,
@@ -502,6 +1212,85 @@ func scanInboxItem(row pgx.Row) (domain.InboxItem, error) {
 		&item.Status,
 		&item.NeedHumanFollowup,
 		&item.DigestStatus,
+		&item.CreatedAt,
+		&item.UpdatedAt,
+	)
+	return item, err
+}
+
+func (p *Postgres) InsertCallbackRequest(request domain.CallbackRequest) (domain.CallbackRequest, error) {
+	row := p.pool.QueryRow(context.Background(), `
+		INSERT INTO callback_requests (
+			merchant_id, original_call_sid, original_call_id, target_number,
+			requested_by, reason, status, audit_note
+		)
+		VALUES ($1, $2, NULLIF($3, ''), $4, NULLIF($5, ''),
+			NULLIF($6, ''), $7, NULLIF($8, ''))
+		RETURNING id, merchant_id, original_call_sid, COALESCE(original_call_id, ''),
+			target_number, COALESCE(requested_by, ''), COALESCE(reason, ''),
+			status, COALESCE(audit_note, ''), created_at, updated_at
+	`, request.MerchantID, request.OriginalCallSID, request.OriginalCallID,
+		request.TargetNumber, request.RequestedBy, request.Reason,
+		valueOr(request.Status, "requested"), request.AuditNote)
+	return scanCallbackRequest(row)
+}
+
+func (p *Postgres) ListCallbackRequestsByCallSID(callSID string, limit int) ([]domain.CallbackRequest, error) {
+	rows, err := p.pool.Query(context.Background(), `
+		SELECT id, merchant_id, original_call_sid, COALESCE(original_call_id, ''),
+			target_number, COALESCE(requested_by, ''), COALESCE(reason, ''),
+			status, COALESCE(audit_note, ''), created_at, updated_at
+		FROM callback_requests
+		WHERE original_call_sid = $1
+		ORDER BY id DESC
+		LIMIT $2
+	`, callSID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []domain.CallbackRequest
+	for rows.Next() {
+		item, err := scanCallbackRequest(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (p *Postgres) UpdateCallbackRequestStatus(id int64, callSID string, status string, auditNote string) (domain.CallbackRequest, error) {
+	row := p.pool.QueryRow(context.Background(), `
+		UPDATE callback_requests
+		SET status = $3,
+			audit_note = COALESCE(NULLIF($4, ''), audit_note),
+			updated_at = now()
+		WHERE id = $1 AND original_call_sid = $2
+		RETURNING id, merchant_id, original_call_sid, COALESCE(original_call_id, ''),
+			target_number, COALESCE(requested_by, ''), COALESCE(reason, ''),
+			status, COALESCE(audit_note, ''), created_at, updated_at
+	`, id, callSID, status, auditNote)
+	item, err := scanCallbackRequest(row)
+	if err == pgx.ErrNoRows {
+		return domain.CallbackRequest{}, ErrNotFound
+	}
+	return item, err
+}
+
+func scanCallbackRequest(row pgx.Row) (domain.CallbackRequest, error) {
+	var item domain.CallbackRequest
+	err := row.Scan(
+		&item.ID,
+		&item.MerchantID,
+		&item.OriginalCallSID,
+		&item.OriginalCallID,
+		&item.TargetNumber,
+		&item.RequestedBy,
+		&item.Reason,
+		&item.Status,
+		&item.AuditNote,
 		&item.CreatedAt,
 		&item.UpdatedAt,
 	)
@@ -645,19 +1434,20 @@ func (p *Postgres) InsertNotificationLog(log domain.NotificationLog) (domain.Not
 		INSERT INTO notification_logs (
 			merchant_id, channel, message_type, target, subject, body,
 			related_digest_id, related_inbox_item_id, idempotency_key,
-			status, attempt_count, last_error
+			status, attempt_count, max_attempts, last_error
 		)
 		VALUES ($1, $2, $3, NULLIF($4, ''), NULLIF($5, ''), $6,
-			NULLIF($7, 0), NULLIF($8, 0), $9, $10, $11, NULLIF($12, ''))
+			NULLIF($7, 0), NULLIF($8, 0), $9, $10, $11, $12, NULLIF($13, ''))
 		ON CONFLICT (idempotency_key) DO UPDATE SET
 			updated_at = now()
 		RETURNING id, merchant_id, channel, message_type, COALESCE(target, ''),
 			COALESCE(subject, ''), body, related_digest_id, related_inbox_item_id,
-			idempotency_key, status, attempt_count, COALESCE(last_error, ''),
-			created_at, updated_at
+			idempotency_key, status, attempt_count, max_attempts, COALESCE(last_error, ''),
+			COALESCE(error_category, ''), next_retry_at, created_at, updated_at
 	`, log.MerchantID, valueOr(log.Channel, "log"), log.MessageType, log.Target,
 		log.Subject, log.Body, log.RelatedDigestID, log.RelatedInboxItemID,
-		log.IdempotencyKey, valueOr(log.Status, "queued"), log.AttemptCount, log.LastError)
+		log.IdempotencyKey, valueOr(log.Status, "queued"), log.AttemptCount,
+		valueOrInt(log.MaxAttempts, 5), log.LastError)
 	return scanNotificationLog(row)
 }
 
@@ -665,8 +1455,8 @@ func (p *Postgres) FindNotificationLogByKey(key string) (domain.NotificationLog,
 	row := p.pool.QueryRow(context.Background(), `
 		SELECT id, merchant_id, channel, message_type, COALESCE(target, ''),
 			COALESCE(subject, ''), body, related_digest_id, related_inbox_item_id,
-			idempotency_key, status, attempt_count, COALESCE(last_error, ''),
-			created_at, updated_at
+			idempotency_key, status, attempt_count, max_attempts, COALESCE(last_error, ''),
+			COALESCE(error_category, ''), next_retry_at, created_at, updated_at
 		FROM notification_logs
 		WHERE idempotency_key = $1
 	`, key)
@@ -684,8 +1474,8 @@ func (p *Postgres) ListNotificationLogs(merchantID string, status string, limit 
 	rows, err := p.pool.Query(context.Background(), `
 		SELECT id, merchant_id, channel, message_type, COALESCE(target, ''),
 			COALESCE(subject, ''), body, related_digest_id, related_inbox_item_id,
-			idempotency_key, status, attempt_count, COALESCE(last_error, ''),
-			created_at, updated_at
+			idempotency_key, status, attempt_count, max_attempts, COALESCE(last_error, ''),
+			COALESCE(error_category, ''), next_retry_at, created_at, updated_at
 		FROM notification_logs
 		WHERE ($1 = '' OR merchant_id = $1)
 			AND ($2 = '' OR status = $2)
@@ -714,16 +1504,145 @@ func (p *Postgres) UpdateNotificationLogStatus(id int64, status string, attemptC
 		SET status = $2,
 			attempt_count = $3,
 			last_error = NULLIF($4, ''),
+			error_category = NULL,
+			next_retry_at = NULL,
 			updated_at = now()
 		WHERE id = $1
 		RETURNING id, merchant_id, channel, message_type, COALESCE(target, ''),
 			COALESCE(subject, ''), body, related_digest_id, related_inbox_item_id,
-			idempotency_key, status, attempt_count, COALESCE(last_error, ''),
-			created_at, updated_at
+			idempotency_key, status, attempt_count, max_attempts, COALESCE(last_error, ''),
+			COALESCE(error_category, ''), next_retry_at, created_at, updated_at
 	`, id, status, attemptCount, lastError)
 	item, err := scanNotificationLog(row)
 	if err == pgx.ErrNoRows {
 		return domain.NotificationLog{}, ErrNotFound
+	}
+	return item, err
+}
+
+func (p *Postgres) ListDueNotificationLogs(status string, limit int, now time.Time) ([]domain.NotificationLog, error) {
+	rows, err := p.pool.Query(context.Background(), `
+		SELECT id, merchant_id, channel, message_type, COALESCE(target, ''),
+			COALESCE(subject, ''), body, related_digest_id, related_inbox_item_id,
+			idempotency_key, status, attempt_count, max_attempts, COALESCE(last_error, ''),
+			COALESCE(error_category, ''), next_retry_at, created_at, updated_at
+		FROM notification_logs
+		WHERE status = $1
+			AND attempt_count < max_attempts
+			AND (next_retry_at IS NULL OR next_retry_at <= $2)
+		ORDER BY next_retry_at ASC NULLS FIRST, id ASC
+		LIMIT $3
+	`, status, now, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []domain.NotificationLog
+	for rows.Next() {
+		item, err := scanNotificationLog(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (p *Postgres) UpdateNotificationLogDispatch(
+	id int64,
+	status string,
+	attemptCount int,
+	maxAttempts int,
+	lastError string,
+	errorCategory string,
+	nextRetryAt time.Time,
+) (domain.NotificationLog, error) {
+	var nextRetryValue any
+	if !nextRetryAt.IsZero() {
+		nextRetryValue = nextRetryAt
+	}
+	row := p.pool.QueryRow(context.Background(), `
+		UPDATE notification_logs
+		SET status = $2,
+			attempt_count = $3,
+			max_attempts = $4,
+			last_error = NULLIF($5, ''),
+			error_category = NULLIF($6, ''),
+			next_retry_at = $7,
+			updated_at = now()
+		WHERE id = $1
+		RETURNING id, merchant_id, channel, message_type, COALESCE(target, ''),
+			COALESCE(subject, ''), body, related_digest_id, related_inbox_item_id,
+			idempotency_key, status, attempt_count, max_attempts, COALESCE(last_error, ''),
+			COALESCE(error_category, ''), next_retry_at, created_at, updated_at
+	`, id, status, attemptCount, valueOrInt(maxAttempts, 5), lastError, errorCategory, nextRetryValue)
+	item, err := scanNotificationLog(row)
+	if err == pgx.ErrNoRows {
+		return domain.NotificationLog{}, ErrNotFound
+	}
+	return item, err
+}
+
+func (p *Postgres) UpsertBusinessResultRetry(job domain.BusinessResultRetry) (domain.BusinessResultRetry, error) {
+	row := p.pool.QueryRow(context.Background(), `
+		INSERT INTO business_result_retries (
+			session_id, call_sid, payload, status, attempt_count, last_error
+		)
+		VALUES ($1, $2, $3::jsonb, $4, $5, NULLIF($6, ''))
+		ON CONFLICT (session_id) DO UPDATE SET
+			call_sid = EXCLUDED.call_sid,
+			payload = EXCLUDED.payload,
+			status = EXCLUDED.status,
+			attempt_count = EXCLUDED.attempt_count,
+			last_error = EXCLUDED.last_error,
+			updated_at = now()
+		RETURNING id, session_id, call_sid, payload::text, status,
+			attempt_count, COALESCE(last_error, ''), created_at, updated_at
+	`, job.SessionID, job.CallSID, job.Payload, valueOr(job.Status, "failed"),
+		job.AttemptCount, job.LastError)
+	return scanBusinessResultRetry(row)
+}
+
+func (p *Postgres) ListBusinessResultRetries(status string, limit int) ([]domain.BusinessResultRetry, error) {
+	rows, err := p.pool.Query(context.Background(), `
+		SELECT id, session_id, call_sid, payload::text, status,
+			attempt_count, COALESCE(last_error, ''), created_at, updated_at
+		FROM business_result_retries
+		WHERE ($1 = '' OR status = $1)
+		ORDER BY id DESC
+		LIMIT $2
+	`, status, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []domain.BusinessResultRetry
+	for rows.Next() {
+		item, err := scanBusinessResultRetry(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (p *Postgres) UpdateBusinessResultRetryStatus(id int64, status string, attemptCount int, lastError string) (domain.BusinessResultRetry, error) {
+	row := p.pool.QueryRow(context.Background(), `
+		UPDATE business_result_retries
+		SET status = $2,
+			attempt_count = $3,
+			last_error = NULLIF($4, ''),
+			updated_at = now()
+		WHERE id = $1
+		RETURNING id, session_id, call_sid, payload::text, status,
+			attempt_count, COALESCE(last_error, ''), created_at, updated_at
+	`, id, status, attemptCount, lastError)
+	item, err := scanBusinessResultRetry(row)
+	if err == pgx.ErrNoRows {
+		return domain.BusinessResultRetry{}, ErrNotFound
 	}
 	return item, err
 }
@@ -789,6 +1708,7 @@ func scanNotificationLog(row pgx.Row) (domain.NotificationLog, error) {
 	var item domain.NotificationLog
 	var relatedDigestID sql.NullInt64
 	var relatedInboxItemID sql.NullInt64
+	var nextRetryAt sql.NullTime
 	err := row.Scan(
 		&item.ID,
 		&item.MerchantID,
@@ -802,7 +1722,10 @@ func scanNotificationLog(row pgx.Row) (domain.NotificationLog, error) {
 		&item.IdempotencyKey,
 		&item.Status,
 		&item.AttemptCount,
+		&item.MaxAttempts,
 		&item.LastError,
+		&item.ErrorCategory,
+		&nextRetryAt,
 		&item.CreatedAt,
 		&item.UpdatedAt,
 	)
@@ -812,11 +1735,37 @@ func scanNotificationLog(row pgx.Row) (domain.NotificationLog, error) {
 	if relatedInboxItemID.Valid {
 		item.RelatedInboxItemID = relatedInboxItemID.Int64
 	}
+	if nextRetryAt.Valid {
+		item.NextRetryAt = &nextRetryAt.Time
+	}
+	return item, err
+}
+
+func scanBusinessResultRetry(row pgx.Row) (domain.BusinessResultRetry, error) {
+	var item domain.BusinessResultRetry
+	err := row.Scan(
+		&item.ID,
+		&item.SessionID,
+		&item.CallSID,
+		&item.Payload,
+		&item.Status,
+		&item.AttemptCount,
+		&item.LastError,
+		&item.CreatedAt,
+		&item.UpdatedAt,
+	)
 	return item, err
 }
 
 func valueOr(value string, fallback string) string {
 	if value == "" {
+		return fallback
+	}
+	return value
+}
+
+func valueOrInt(value int, fallback int) int {
+	if value == 0 {
 		return fallback
 	}
 	return value

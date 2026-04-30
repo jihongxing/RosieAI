@@ -5,6 +5,11 @@
   </view>
 
   <view wx:if="{{loading}}" class="empty">加载中</view>
+  <view wx:elif="{{errorMessage}}" class="error-card">
+    <view class="error-title">商家配置加载失败</view>
+    <view class="error-message">{{errorMessage}}</view>
+    <button class="button secondary error-action" bindtap="loadAll">重试</button>
+  </view>
 
   <block wx:else>
     <view class="card">

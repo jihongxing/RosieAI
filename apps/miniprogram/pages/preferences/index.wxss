@@ -47,3 +47,8 @@
 .save-button {
   margin: 24rpx 0 0;
 }
+
+.subscribe-button {
+  width: 100%;
+  margin-top: 18rpx;
+}
