@@ -1,8 +1,10 @@
 services:
   realtime-voice:
-    build: .
+    build:
+      context: .
+      args:
+        INSTALL_VOICE_MODELS: ${INSTALL_VOICE_MODELS:-false}
     ports:
       - "8020:8020"
     env_file:
       - .env
-

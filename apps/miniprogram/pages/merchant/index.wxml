@@ -1,0 +1,53 @@
+<view class="page">
+  <view class="header">
+    <view class="title">商家配置</view>
+    <view class="subtitle">维护 Rosie 接电话时要知道的店铺信息</view>
+  </view>
+
+  <view wx:if="{{loading}}" class="empty">加载中</view>
+
+  <block wx:else>
+    <view class="card">
+      <view class="field">
+        <view class="label">商家 ID</view>
+        <view class="value">{{merchantId}}</view>
+      </view>
+      <view class="label">店名</view>
+      <input class="input" value="{{merchantName}}" data-key="merchantName" bindinput="onInput" placeholder="例如 小王理发店" />
+      <view class="label field-label">Rosie 幕后接入号</view>
+      <input class="input" value="{{accessNumber}}" data-key="accessNumber" bindinput="onInput" placeholder="8613..." />
+      <view class="label field-label">商家原号码</view>
+      <input class="input" value="{{originalNumber}}" data-key="originalNumber" bindinput="onInput" placeholder="客户平时拨打的号码" />
+      <view class="label field-label">紧急转接号码</view>
+      <input class="input" value="{{transferPhone}}" data-key="transferPhone" bindinput="onInput" placeholder="需要人工时转接到这里" />
+    </view>
+
+    <view class="card">
+      <view class="label">行业话术模板</view>
+      <picker mode="selector" range="{{templateNames}}" value="{{templateIndex}}" bindchange="onTemplateChange">
+        <view class="picker-value">{{templateName}}</view>
+      </picker>
+      <view class="label field-label">地址</view>
+      <input class="input" value="{{address}}" data-key="address" bindinput="onInput" placeholder="门店地址或服务区域" />
+      <view class="label field-label">营业时间</view>
+      <input class="input" value="{{businessHours}}" data-key="businessHours" bindinput="onInput" placeholder="例如 10:00-21:00" />
+      <view class="label field-label">服务项目</view>
+      <textarea class="textarea" value="{{servicesText}}" data-key="servicesText" bindinput="onInput" placeholder="每行一个，例如：剪发" />
+      <view class="label field-label">预约规则</view>
+      <textarea class="textarea" value="{{appointmentRules}}" data-key="appointmentRules" bindinput="onInput" placeholder="例如 预约需留下称呼、电话和到店时间" />
+    </view>
+
+    <view class="card">
+      <view class="label">常见问答</view>
+      <textarea class="textarea faq-textarea" value="{{faqText}}" data-key="faqText" bindinput="onInput" placeholder="每行一条：问题|答案" />
+      <view class="meta">示例：几点营业|每天 10:00 到 21:00</view>
+    </view>
+
+    <view class="card">
+      <view class="section-title">AI 话术预览</view>
+      <view class="prompt-text">{{promptPreview}}</view>
+    </view>
+
+    <button class="button save-button" loading="{{saving}}" bindtap="save">保存配置</button>
+  </block>
+</view>

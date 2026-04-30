@@ -1,0 +1,35 @@
+<view class="page">
+  <view class="header">
+    <view class="title">来电收件箱</view>
+    <view class="subtitle">按优先级查看需要处理的漏接电话</view>
+  </view>
+
+  <view class="card">
+    <view class="row">
+      <view>
+        <view class="label">当前商家</view>
+        <input class="input merchant-input" value="{{merchantId}}" bindinput="onMerchantInput" />
+      </view>
+      <button class="button small-button" bindtap="saveMerchant">保存</button>
+    </view>
+    <view class="row action-row">
+      <button class="button secondary action-button" bindtap="login">微信登录</button>
+      <button class="button action-button" bindtap="loadInbox">刷新</button>
+    </view>
+  </view>
+
+  <view wx:if="{{loading}}" class="empty">加载中</view>
+  <view wx:elif="{{isEmpty}}" class="empty">暂无待查看来电</view>
+
+  <view wx:for="{{items}}" wx:key="id" class="card call-card" data-call-sid="{{item.call_sid}}" bindtap="openDetail">
+    <view class="row">
+      <view class="value">{{item.title}}</view>
+      <view class="badge {{item.priority}}">{{item.priorityLabel}}</view>
+    </view>
+    <view class="body-text">{{item.body}}</view>
+    <view class="row meta-row">
+      <view class="meta">{{item.statusLabel}}</view>
+      <view class="meta">{{item.createdAtLabel}}</view>
+    </view>
+  </view>
+</view>

@@ -13,6 +13,7 @@ async def generate_greeting(
     merchant_name: str,
     caller_number: str,
     timeout_seconds: float,
+    system_prompt: str | None = None,
 ) -> str | None:
     if not ai_agent_url:
         return None
@@ -24,6 +25,7 @@ async def generate_greeting(
     )
     payload = {
         "merchant_name": merchant_name,
+        "system_prompt": system_prompt,
         "customer_text": customer_text,
         "history": [
             {
@@ -51,12 +53,14 @@ async def extract_call_summary(
     merchant_name: str,
     transcript: str,
     timeout_seconds: float,
+    system_prompt: str | None = None,
 ) -> str | None:
     if not ai_agent_url:
         return None
 
     payload = {
         "merchant_name": merchant_name,
+        "system_prompt": system_prompt,
         "transcript": transcript,
     }
 

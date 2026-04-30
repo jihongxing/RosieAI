@@ -1,0 +1,23 @@
+.section-title {
+  margin-bottom: 18rpx;
+  font-size: 30rpx;
+  font-weight: 700;
+}
+
+.field {
+  display: flex;
+  justify-content: space-between;
+  gap: 24rpx;
+  padding: 14rpx 0;
+  border-bottom: 1rpx solid #eef0f3;
+}
+
+.field:last-child {
+  border-bottom: 0;
+}
+
+.field text:last-child {
+  max-width: 430rpx;
+  text-align: right;
+  word-break: break-all;
+}

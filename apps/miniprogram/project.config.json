@@ -1,0 +1,13 @@
+{
+  "description": "RosieAI merchant mini program",
+  "appid": "touristappid",
+  "projectname": "RosieAI",
+  "miniprogramRoot": "./",
+  "setting": {
+    "urlCheck": false,
+    "es6": true,
+    "postcss": true,
+    "minified": true
+  },
+  "compileType": "miniprogram"
+}

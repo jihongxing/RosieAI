@@ -1,16 +1,20 @@
 import os
 import tempfile
+from dataclasses import replace
 
 os.environ["ROSIE_DB_PATH"] = tempfile.NamedTemporaryFile(delete=True).name
 os.environ["ROSIE_DEFAULT_ACCESS_NUMBER"] = "8613736849910"
 os.environ["ROSIE_DEFAULT_MERCHANT_NAME"] = "测试理发店"
+os.environ["ROSIE_BUSINESS_API_URL"] = ""
 os.environ["ROSIE_USE_AI_GREETING"] = "false"
 os.environ["ROSIE_USE_AI_EXTRACT"] = "false"
 os.environ["ROSIE_REALTIME_LISTEN_ENABLED"] = "false"
 
 from fastapi.testclient import TestClient  # noqa: E402
+import pytest  # noqa: E402
 
 from rosie_call_webhook.app import app  # noqa: E402
+import rosie_call_webhook.app as app_module  # noqa: E402
 
 
 def test_inbound_call_returns_jambonz_verbs():
@@ -103,6 +107,47 @@ def test_access_number_matches_with_or_without_plus_prefix():
         assert response.status_code == 200
         body = response.json()
         assert "李四花店" in body[0]["text"]
+
+
+def test_realtime_listen_metadata_carries_system_prompt(monkeypatch: pytest.MonkeyPatch):
+    async def fake_context(merchant):
+        return {
+            "merchant": merchant,
+            "profile": {"industry": "hair_salon"},
+            "template": {"key": "hair_salon"},
+            "system_prompt": "服务项目：剪发、烫染、护理",
+    }
+
+    monkeypatch.setattr(app_module, "_merchant_ai_context", fake_context)
+    monkeypatch.setattr(
+        app_module,
+        "settings",
+        replace(
+            app_module.settings,
+            realtime_listen_enabled=True,
+            realtime_ws_url="ws://127.0.0.1:8020/ws/jambonz/audio",
+            realtime_action_hook="http://127.0.0.1:8000/listen-complete",
+        ),
+    )
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/webhooks/jambonz/call",
+            json={
+                "callSid": "call-realtime-metadata",
+                "from": "+8613811112222",
+                "to": "8613736849910",
+                "callStatus": "trying",
+            },
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    listen_verb = next(item for item in body if item["verb"] == "listen")
+    metadata = listen_verb["metadata"]
+    assert metadata["system_prompt"] == "服务项目：剪发、烫染、护理"
+    assert metadata["merchant_profile"]["industry"] == "hair_salon"
+    assert metadata["industry_template"]["key"] == "hair_salon"
 
 
 def test_simulated_call_result_creates_inbox_item():
@@ -208,6 +253,93 @@ def test_generate_digest_marks_items_as_digested():
         digests = digests_response.json()["items"]
         assert digests[0]["id"] == body["digest_id"]
         assert "Rosie 今日帮你整理了" in digests[0]["digest_text"]
+
+
+def test_digest_tick_queues_notification_and_is_idempotent():
+    with TestClient(app) as client:
+        merchant = {
+            "merchant_id": "merchant-digest-tick",
+            "merchant_name": "定时汇总测试店",
+            "access_number": "+8617000000200",
+            "enabled": True,
+        }
+        assert client.post("/merchants", json=merchant).status_code == 200
+        client.post(
+            "/simulate/call-result",
+            json={
+                "call_sid": "sim-call-digest-tick",
+                "from_number": "+8613811117777",
+                "to_number": "+8617000000200",
+                "transcript": "你好，我想预约明天下午三点剪头发。",
+            },
+        )
+
+        response = client.post("/internal/digest-tick?now=2026-04-30T20:00:00")
+
+        assert response.status_code == 200
+        result = next(
+            item
+            for item in response.json()["results"]
+            if item["merchant_id"] == "merchant-digest-tick"
+        )
+        assert result["status"] == "queued"
+        assert result["total"] == 1
+        assert result["digest_id"]
+        assert result["notification_log_id"]
+
+        duplicate_response = client.post("/internal/digest-tick?now=2026-04-30T20:00:00")
+        duplicate_result = next(
+            item
+            for item in duplicate_response.json()["results"]
+            if item["merchant_id"] == "merchant-digest-tick"
+        )
+        assert duplicate_result["status"] == "duplicate"
+        assert duplicate_result["notification_log_id"] == result["notification_log_id"]
+
+        logs_response = client.get("/notification-logs?merchant_id=merchant-digest-tick")
+        assert logs_response.status_code == 200
+        logs = logs_response.json()["items"]
+        assert len(logs) == 1
+        assert logs[0]["status"] == "queued"
+        assert logs[0]["channel"] == "wechat_subscription"
+        assert logs[0]["related_digest_id"] == result["digest_id"]
+
+
+def test_digest_tick_skips_when_not_due():
+    with TestClient(app) as client:
+        response = client.post("/internal/digest-tick?now=2026-04-30T19:59:00")
+
+        assert response.status_code == 200
+        assert all(item["status"] == "not_due" for item in response.json()["results"])
+
+
+def test_digest_tick_records_empty_due_run():
+    with TestClient(app) as client:
+        merchant = {
+            "merchant_id": "merchant-empty-digest-tick",
+            "merchant_name": "空汇总测试店",
+            "access_number": "+8617000000201",
+            "enabled": True,
+        }
+        assert client.post("/merchants", json=merchant).status_code == 200
+
+        response = client.post("/internal/digest-tick?now=2026-05-01T20:00:00")
+
+        assert response.status_code == 200
+        result = next(
+            item
+            for item in response.json()["results"]
+            if item["merchant_id"] == "merchant-empty-digest-tick"
+        )
+        assert result["status"] == "skipped_no_pending_items"
+        assert result["notification_log_id"]
+
+        logs_response = client.get("/notification-logs?merchant_id=merchant-empty-digest-tick")
+        assert logs_response.status_code == 200
+        logs = logs_response.json()["items"]
+        assert len(logs) == 1
+        assert logs[0]["status"] == "skipped"
+        assert logs[0]["related_digest_id"] is None
 
 
 def test_notification_preferences_have_product_defaults():

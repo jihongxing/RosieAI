@@ -1,0 +1,7 @@
+# Optional runtime dependencies for local voice providers.
+# Keep the default service lightweight; install this file only on voice workers.
+edge-tts
+funasr
+modelscope
+pipecat-ai[websocket]
+sherpa-onnx

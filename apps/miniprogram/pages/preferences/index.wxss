@@ -1,0 +1,49 @@
+.field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24rpx;
+  padding: 18rpx 0;
+  border-bottom: 1rpx solid #eef0f3;
+}
+
+.field:last-child {
+  border-bottom: 0;
+}
+
+.segments {
+  display: flex;
+  margin-top: 16rpx;
+}
+
+.segment {
+  flex: 1;
+  height: 72rpx;
+  margin: 0 0 0 12rpx;
+  padding: 0;
+  border: 1rpx solid #d8dde3;
+  border-radius: 8rpx;
+  background: #ffffff;
+  color: #25302b;
+  font-size: 26rpx;
+  line-height: 72rpx;
+}
+
+.segment:first-child {
+  margin-left: 0;
+}
+
+.segment::after {
+  border: 0;
+}
+
+.segment.active {
+  border-color: #1f6f5b;
+  background: #e8f4ef;
+  color: #1f6f5b;
+  font-weight: 700;
+}
+
+.save-button {
+  margin: 24rpx 0 0;
+}

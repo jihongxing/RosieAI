@@ -121,6 +121,27 @@ CREATE TABLE IF NOT EXISTS notification_preferences (
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS notification_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    merchant_id TEXT NOT NULL,
+    channel TEXT NOT NULL,
+    message_type TEXT NOT NULL,
+    target TEXT,
+    subject TEXT,
+    body TEXT NOT NULL,
+    related_digest_id INTEGER,
+    related_inbox_item_id INTEGER,
+    idempotency_key TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL DEFAULT 'queued',
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_notification_logs_merchant ON notification_logs(merchant_id, id);
+CREATE INDEX IF NOT EXISTS idx_notification_logs_status ON notification_logs(status, id);
 """
 
 
@@ -591,6 +612,86 @@ class Database:
                 LIMIT ?
                 """,
                 (merchant_id, limit),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def find_notification_log_by_key(self, idempotency_key: str) -> dict[str, Any] | None:
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT id, merchant_id, channel, message_type, target, subject, body,
+                       related_digest_id, related_inbox_item_id, idempotency_key,
+                       status, attempt_count, last_error, created_at, updated_at
+                FROM notification_logs
+                WHERE idempotency_key = ?
+                """,
+                (idempotency_key,),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def insert_notification_log(self, notification: dict[str, Any]) -> int:
+        with self.connect() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO notification_logs (
+                    merchant_id, channel, message_type, target, subject, body,
+                    related_digest_id, related_inbox_item_id, idempotency_key,
+                    status, attempt_count, last_error
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(idempotency_key) DO UPDATE SET
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (
+                    notification["merchant_id"],
+                    notification.get("channel", "log"),
+                    notification["message_type"],
+                    notification.get("target"),
+                    notification.get("subject"),
+                    notification["body"],
+                    notification.get("related_digest_id"),
+                    notification.get("related_inbox_item_id"),
+                    notification["idempotency_key"],
+                    notification.get("status", "queued"),
+                    notification.get("attempt_count", 0),
+                    notification.get("last_error"),
+                ),
+            )
+            row = conn.execute(
+                "SELECT id FROM notification_logs WHERE idempotency_key = ?",
+                (notification["idempotency_key"],),
+            ).fetchone()
+            return int(row["id"] if row else cursor.lastrowid)
+
+    def list_notification_logs(
+        self,
+        merchant_id: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        clauses = []
+        params: list[Any] = []
+        if merchant_id:
+            clauses.append("merchant_id = ?")
+            params.append(merchant_id)
+        if status:
+            clauses.append("status = ?")
+            params.append(status)
+
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        params.append(limit)
+        with self.connect() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT id, merchant_id, channel, message_type, target, subject, body,
+                       related_digest_id, related_inbox_item_id, idempotency_key,
+                       status, attempt_count, last_error, created_at, updated_at
+                FROM notification_logs
+                {where}
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                params,
             ).fetchall()
         return [dict(row) for row in rows]
 

@@ -1,0 +1,39 @@
+{
+  "pages": [
+    "pages/inbox/index",
+    "pages/call-detail/index",
+    "pages/digests/index",
+    "pages/merchant/index",
+    "pages/preferences/index"
+  ],
+  "window": {
+    "navigationBarTitleText": "Rosie",
+    "navigationBarBackgroundColor": "#1f6f5b",
+    "navigationBarTextStyle": "white",
+    "backgroundColor": "#f6f7f8"
+  },
+  "tabBar": {
+    "color": "#6b7280",
+    "selectedColor": "#1f6f5b",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "black",
+    "list": [
+      {
+        "pagePath": "pages/inbox/index",
+        "text": "收件箱"
+      },
+      {
+        "pagePath": "pages/digests/index",
+        "text": "汇总"
+      },
+      {
+        "pagePath": "pages/merchant/index",
+        "text": "商家"
+      },
+      {
+        "pagePath": "pages/preferences/index",
+        "text": "通知"
+      }
+    ]
+  }
+}

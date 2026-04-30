@@ -93,8 +93,18 @@ Rosie 的产品边界必须清晰：Rosie 只处理客户主动打进来的电�
 - 业务层已跑通“模拟转写文本 -> 摘要与结构化信息 -> 小程序收件箱数据 -> 汇总预览 -> 正式汇总生成”。
 - 同一通电话按 `call_sid` 幂等处理，重复提交不会重复生成收件箱待办。
 - 通知偏好已支持每日汇总、每日两次汇总、紧急实时提醒、免打扰和可选团队通知开关。
+- 定时汇总触发、通知发送日志、微信订阅消息发送器和 openid 绑定已完成。
+- 小程序收件箱、通话详情、汇总历史、通知偏好页面雏形已建立，位于 `apps/miniprogram`。
+- 商家配置接口与页面已建立，支持店名、号码、地址、营业时间、服务项目、FAQ、预约规则。
+- 第一版行业话术模板已建立，覆盖理发店 / 美发店、本地生活服务，可生成 AI 系统提示词。
+- 商家 `system_prompt` 已接入 Python `ai-agent` 和 `call-webhook`，用于 AI 欢迎语、摘要提取和后续实时语音 metadata。
+- `realtime-voice` 已能消费这份 metadata，建立实时会话上下文，并通过模拟 STT 文本帧驱动 `ai-agent /chat` 回复。
+- `realtime-voice` 已建立 STT -> `ai-agent` -> TTS turn pipeline，支持 HTTP STT / TTS provider，并能把 TTS 音频 bytes 回写电话侧 WebSocket。
+- `realtime-voice` 已新增真实语音 provider：`funasr` STT 可接 FunASR / SenseVoice，`edge` TTS 可通过 ffmpeg 转成电话侧 PCM，`pipecat_http` 可把 session context / history / 音频转交给外部 Pipecat worker。
 
-下一步产品重点不是继续做语音留言箱，而是补齐“老板决策清单”闭环：定时汇总触发、微信订阅消息、小程序收件箱页面、通话详情和处理动作。
+下一步产品重点不是继续做语音留言箱，而是把“老板决策清单”闭环从页面雏形推进到试点可用：处理动作、回拨审计、真实小程序联调，以及部署真实 FunASR / SenseVoice、TTS worker 或 Pipecat worker 做电话侧延迟验证。
+
+2026-04-30 工程决策：MVP 验证已通过，正式业务后端切换为 Go。Python 继续保留 AI / 语音相关能力，包括 `ai-agent`、后续 STT / TTS / Pipecat 和实验性推理链路。
 
 ### 5.2 商业化目标
 

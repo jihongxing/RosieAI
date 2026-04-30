@@ -1,0 +1,26 @@
+.merchant-input {
+  width: 380rpx;
+  margin-top: 10rpx;
+}
+
+.small-button {
+  width: 150rpx;
+  margin: 0;
+}
+
+.action-row {
+  margin-top: 20rpx;
+}
+
+.action-button {
+  flex: 1;
+  margin: 0;
+}
+
+.call-card {
+  min-height: 188rpx;
+}
+
+.meta-row {
+  align-items: flex-end;
+}

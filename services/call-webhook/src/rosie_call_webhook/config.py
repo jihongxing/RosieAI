@@ -15,6 +15,7 @@ class Settings:
     default_transfer_phone: str | None
     public_base_url: str | None
     wecom_webhook_url: str | None
+    business_api_url: str | None
     ai_agent_url: str | None
     use_ai_greeting: bool
     use_ai_extract: bool
@@ -41,6 +42,7 @@ def get_settings() -> Settings:
         default_transfer_phone=_optional_env("ROSIE_DEFAULT_TRANSFER_PHONE"),
         public_base_url=_optional_env("ROSIE_PUBLIC_BASE_URL"),
         wecom_webhook_url=_optional_env("ROSIE_WECOM_WEBHOOK_URL"),
+        business_api_url=_optional_env("ROSIE_BUSINESS_API_URL"),
         ai_agent_url=_optional_env("ROSIE_AI_AGENT_URL"),
         use_ai_greeting=os.getenv("ROSIE_USE_AI_GREETING", "false").lower() == "true",
         use_ai_extract=os.getenv("ROSIE_USE_AI_EXTRACT", "false").lower() == "true",

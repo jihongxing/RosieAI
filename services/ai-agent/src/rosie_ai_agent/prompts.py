@@ -1,5 +1,9 @@
-def chat_system_prompt(merchant_name: str, merchant_profile: str | None) -> str:
-    profile = merchant_profile or "暂无更详细的商家资料。"
+def chat_system_prompt(
+    merchant_name: str,
+    merchant_profile: str | None,
+    system_prompt: str | None = None,
+) -> str:
+    profile = system_prompt or merchant_profile or "暂无更详细的商家资料。"
     return f"""
 你是 Rosie，一个中文 AI 电话前台。你正在代表「{merchant_name}」接听电话。
 
@@ -28,7 +32,13 @@ def chat_user_prompt(customer_text: str, history_text: str) -> str:
 """.strip()
 
 
-def extract_prompt(merchant_name: str, transcript: str) -> str:
+def extract_prompt(
+    merchant_name: str,
+    transcript: str,
+    merchant_profile: str | None = None,
+    system_prompt: str | None = None,
+) -> str:
+    profile = system_prompt or merchant_profile or "暂无更详细的商家资料。"
     return f"""
 你是 Rosie 的通话整理助手。请根据以下「{merchant_name}」的通话转写，输出 JSON。
 
@@ -37,8 +47,11 @@ def extract_prompt(merchant_name: str, transcript: str) -> str:
 - 字段包括 summary、customer_name、customer_phone、intent、appointment_time、service、priority、need_human_followup。
 - 如果信息不存在，用 null。
 - priority 只能是 low、normal、high、urgent。
+- 必须结合商家资料判断 intent、service、priority、need_human_followup，不要编造商家没有提供的信息。
+
+商家资料：
+{profile}
 
 通话转写：
 {transcript}
 """.strip()
-

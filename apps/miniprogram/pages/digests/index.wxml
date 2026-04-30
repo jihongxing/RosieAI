@@ -1,0 +1,40 @@
+<view class="page">
+  <view class="header">
+    <view class="title">来电汇总</view>
+    <view class="subtitle">查看历史汇总，或生成当前待处理汇总</view>
+  </view>
+
+  <view class="card">
+    <view class="row">
+      <view>
+        <view class="label">待汇总</view>
+        <view class="value">{{preview.total}} 通</view>
+      </view>
+      <view>
+        <view class="label">建议处理</view>
+        <view class="value">{{preview.followup_count}} 个</view>
+      </view>
+      <view>
+        <view class="label">疑似骚扰</view>
+        <view class="value">{{preview.spam_count}} 个</view>
+      </view>
+    </view>
+    <view class="body-text preview-text">{{preview.digestText}}</view>
+    <view class="row action-row">
+      <button class="button secondary action-button" bindtap="loadAll">刷新</button>
+      <button class="button action-button" bindtap="generateDigest">生成汇总</button>
+    </view>
+  </view>
+
+  <view wx:if="{{loading}}" class="empty">加载中</view>
+  <view wx:elif="{{isEmpty}}" class="empty">暂无汇总历史</view>
+
+  <view wx:for="{{items}}" wx:key="id" class="card">
+    <view class="row">
+      <view class="value">{{item.digestTypeLabel}}汇总</view>
+      <view class="badge">{{item.item_count}} 通</view>
+    </view>
+    <view class="body-text digest-text">{{item.digest_text}}</view>
+    <view class="meta">{{item.createdAtLabel}}</view>
+  </view>
+</view>

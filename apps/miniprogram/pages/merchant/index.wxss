@@ -1,0 +1,60 @@
+.field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20rpx;
+  padding-bottom: 18rpx;
+  margin-bottom: 18rpx;
+  border-bottom: 1rpx solid #eef0f3;
+}
+
+.field-label {
+  margin-top: 20rpx;
+  margin-bottom: 10rpx;
+}
+
+.picker-value {
+  height: 76rpx;
+  padding: 0 20rpx;
+  border: 1rpx solid #d8dde3;
+  border-radius: 8rpx;
+  background: #ffffff;
+  color: #17201c;
+  line-height: 76rpx;
+  box-sizing: border-box;
+}
+
+.textarea {
+  width: 100%;
+  min-height: 150rpx;
+  padding: 18rpx 20rpx;
+  border: 1rpx solid #d8dde3;
+  border-radius: 8rpx;
+  background: #ffffff;
+  line-height: 1.5;
+  box-sizing: border-box;
+}
+
+.faq-textarea {
+  min-height: 190rpx;
+  margin-top: 10rpx;
+}
+
+.section-title {
+  margin-bottom: 16rpx;
+  font-size: 30rpx;
+  font-weight: 700;
+}
+
+.prompt-text {
+  max-height: 460rpx;
+  color: #25302b;
+  font-size: 24rpx;
+  line-height: 1.55;
+  white-space: pre-line;
+  overflow: hidden;
+}
+
+.save-button {
+  margin: 24rpx 0 0;
+}

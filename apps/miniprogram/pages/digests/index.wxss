@@ -1,0 +1,13 @@
+.preview-text,
+.digest-text {
+  white-space: pre-line;
+}
+
+.action-row {
+  margin-top: 20rpx;
+}
+
+.action-button {
+  flex: 1;
+  margin: 0;
+}

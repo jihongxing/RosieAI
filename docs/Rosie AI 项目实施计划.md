@@ -62,6 +62,8 @@ MVP 暂不做：
 - STT：FunASR + SenseVoice Small。
 - LLM：Qwen3-8B 本地，DeepSeek API 兜底。
 - TTS：Fun-CosyVoice 3.0，保守备选 CosyVoice 2.0。
+- 正式业务后端：Go。
+- AI / 语音服务：Python，保留 `ai-agent`、STT / TTS、Pipecat 和实验性推理链路。
 - 数据库：PostgreSQL 17。
 - 缓存：Valkey 8.x / Redis 7.2.x。
 - 对象存储：腾讯云 COS 或 MinIO。
@@ -94,7 +96,8 @@ MVP 暂不做：
 
 - 不再为了验证 jambonz 基础能力单独购买海外 DID。
 - 海外 DID / SIP Provider 只作为后续全球化或临时兜底选项。
-- 研发继续推进业务层 MVP：通话记录、转写、摘要、意图、通知、商家配置。
+- 研发从 Python MVP 进入 Go 正式业务后端建设，Python `call-webhook` 作为行为参考和通信联调工具保留。
+- Python 继续负责 AI / 语音相关能力，包括 `ai-agent`、STT / TTS、Pipecat 和实验性推理链路。
 - 商务并行寻找中国区可入站 SIP Trunk / DID / IMS 线路资源。
 
 ## 4. 总体里程碑
@@ -104,7 +107,8 @@ MVP 暂不做：
 | Phase 0：准备 | 第 1 周 | 环境、合规和试点资源准备 | 服务器、小程序主体、试点商家名单就绪 |
 | Phase 1：通信技术 POC | 已完成基础链路 | Rosie webhook、AI greeting、realtime listen verbs | 公网健康检查、webhook、AI greeting、接入号映射通过 |
 | Phase 1B：线路商务接入 | 并行推进 | 获取真实可入站 SIP Trunk / DID / IMS 线路 | 真实 PSTN 电话能进入 jambonz |
-| Phase 2：业务层 MVP | 进行中，核心后端已验证 | 通话记录、转写摘要、结构化信息、收件箱、定时汇总 | 模拟转写已能形成老板可看的来电结果，下一步补定时触发和通知发送 |
+| Phase 2：业务层 MVP | 进行中，核心闭环已验证 | 通话记录、转写摘要、结构化信息、收件箱、定时汇总 | 模拟转写已能形成老板可看的来电结果，小程序基础页面和商家配置已接入 Go API |
+| Phase 2B：Go 正式业务后端 | 进行中 | 用 Go 承接正式业务 API 和 PostgreSQL 数据模型 | 核心 MVP 接口在 Go 中跑通，PostgreSQL store、通话详情、微信订阅消息发送、openid 绑定、小程序页面、商家配置和行业话术模板已接入 |
 | Phase 3：实时 AI 对话 | 线路就绪后 | Pipecat 跑通实时 STT -> LLM -> TTS | 电话中完成 3 轮自然问答 |
 | Phase 4：真实试点 | 线路和 MVP 就绪后 | 3 到 10 家商家试用 | 连续 7 天稳定接听，收集付费意愿和问题 |
 | Phase 5：小规模商业化 | 试点后 | 10 到 100 家商家 | 形成可复制开通流程和基础运维体系 |
@@ -223,14 +227,25 @@ MVP 暂不做：
 - 汇总生成 `/digests/generate`。
 - 汇总历史 `/digests`。
 - 通知偏好查看和更新 `/notification-preferences`。
+- 定时汇总触发器 `/internal/digest-tick`，可由 cron 每分钟调用，并按通知偏好自动生成汇总。
+- 通知发送日志 `/notification-logs`，记录待发送、跳过和幂等状态；微信订阅消息发送器可消费待发送记录并回写结果。
+- Go 通话详情接口 `GET /calls/{call_sid}`。
+- Go 微信订阅消息发送器 `/internal/notifications/dispatch`。
+- Go 小程序登录和 openid 绑定接口 `/auth/wechat-login`。
+- 小程序收件箱、通话详情、汇总历史、通知偏好页面雏形，位于 `apps/miniprogram`。
+- 商家配置接口 `GET /merchant-profile`、`PUT /merchant-profile`。
+- 行业话术模板接口 `GET /industry-templates`，首版覆盖理发店 / 美发店、本地生活服务。
+- 小程序商家配置页面，位于 `apps/miniprogram/pages/merchant`。
+- 商家配置生成的 `system_prompt` 已接入 Python `ai-agent` 和 `call-webhook`；realtime listen metadata 会携带同一份提示词给后续语音链路。
+- `realtime-voice` 已能解析 listen metadata，建立实时会话上下文，并用模拟 STT 文本帧调用 `ai-agent /chat` 生成回复。
+- `realtime-voice` 已建立 STT -> `ai-agent` -> TTS turn pipeline，支持 HTTP STT / TTS provider，并可把 TTS 音频 bytes 通过 WebSocket 回写电话侧。
+- `realtime-voice` 已新增真实语音 provider：`funasr` STT 可接 FunASR / SenseVoice，`edge` TTS 可通过 ffmpeg 转成电话侧 PCM，`pipecat_http` 可把 session context / history / 音频转交给外部 Pipecat worker。
 
 待完成：
 
-- 定时汇总触发器，例如 `POST /internal/digest-tick`，由 cron 每分钟调用。
-- 通知发送日志和发送通道抽象。
-- 微信订阅消息接入。
-- 小程序收件箱、汇总历史、通知偏好页面。
-- 通话详情查询接口和回拨审计字段。
+- 微信开发者工具真机联调、订阅消息授权和页面错误态完善。
+- 部署真实 FunASR / SenseVoice、TTS worker 或 Pipecat worker，完成真实电话侧音频联调和延迟测试。
+- 回拨审计字段。
 
 ### 8.2 验收标准
 
@@ -419,16 +434,13 @@ MVP 暂不做：
 
 从 2026-04-29 收工检查点开始，研发与商务分线推进：
 
-1. 增加定时汇总触发器，让每日 20:00 或每日两次汇总可由 cron 自动触发。
-2. 建立通知发送日志和发送通道抽象，先不急着接真实微信，先保证可追踪、可重试、可幂等。
-3. 接入微信订阅消息，发送每日汇总和关键提醒。
-4. 做通话详情查询接口，让老板能看到“谁打来、说了什么、要不要处理”。
-5. 建立小程序收件箱、汇总历史、通知偏好页面。
-6. 建立第一版行业话术模板，优先理发店 / 本地生活服务。
-7. 商务并行寻找中国区可入站 SIP Trunk / DID / IMS 线路。
-8. 招募 3 家试点商家。
-9. 整理录音告知、隐私协议和 AI 身份告知初稿。
-10. 检查 jambonz、Pipecat、Qwen3、FunASR、Fun-CosyVoice 许可证。
+1. 用微信开发者工具联调 `apps/miniprogram`，验证收件箱、通话详情、汇总历史、通知偏好和商家配置页面。
+2. 部署真实 FunASR / SenseVoice、TTS worker 或 Pipecat worker，做电话侧端到端延迟测试。
+3. 建立基于原始来电上下文的手动回拨审计字段和接口。
+4. 商务并行寻找中国区可入站 SIP Trunk / DID / IMS 线路。
+5. 招募 3 家试点商家。
+6. 整理录音告知、隐私协议和 AI 身份告知初稿。
+7. 检查 jambonz、Pipecat、Qwen3、FunASR、Fun-CosyVoice 许可证。
 
 ## 16. 成功标准
 

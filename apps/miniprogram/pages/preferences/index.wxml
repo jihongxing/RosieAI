@@ -1,0 +1,48 @@
+<view class="page">
+  <view class="header">
+    <view class="title">通知偏好</view>
+    <view class="subtitle">控制 Rosie 什么时候提醒你处理来电</view>
+  </view>
+
+  <view class="card">
+    <view class="label">汇总频率</view>
+    <view class="segments">
+      <button class="{{dailyModeClass}}" data-mode="daily" bindtap="onModeTap">每日</button>
+      <button class="{{twiceDailyModeClass}}" data-mode="twice_daily" bindtap="onModeTap">午晚</button>
+      <button class="{{manualModeClass}}" data-mode="manual" bindtap="onModeTap">手动</button>
+    </view>
+    <view class="meta">默认 20:00 汇总；午晚模式会使用 12:00 与 20:00。</view>
+  </view>
+
+  <view class="card">
+    <view class="field">
+      <view>
+        <view class="value">紧急实时提醒</view>
+        <view class="label">投诉、明确要求回电等</view>
+      </view>
+      <switch checked="{{urgentRealtimeEnabled}}" data-key="urgentRealtimeEnabled" bindchange="onToggle" />
+    </view>
+    <view class="field">
+      <view>
+        <view class="value">团队企业微信</view>
+        <view class="label">适合多人协作门店</view>
+      </view>
+      <switch checked="{{teamWecomEnabled}}" data-key="teamWecomEnabled" bindchange="onToggle" />
+    </view>
+    <view class="field">
+      <view>
+        <view class="value">短信兜底</view>
+        <view class="label">紧急情况备用</view>
+      </view>
+      <switch checked="{{smsFallbackEnabled}}" data-key="smsFallbackEnabled" bindchange="onToggle" />
+    </view>
+  </view>
+
+  <view class="card">
+    <view class="label">汇总时间</view>
+    <input class="input" value="{{digestTimesText}}" bindinput="onDigestTimesInput" placeholder="20:00 或 12:00,20:00" />
+    <view class="meta">多个时间用英文逗号分隔</view>
+  </view>
+
+  <button class="button save-button" bindtap="save">保存设置</button>
+</view>

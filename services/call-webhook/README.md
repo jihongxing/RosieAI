@@ -10,7 +10,7 @@
 - 返回 jambonz JSON verbs，播放固定欢迎语并挂断。
 - 接收 jambonz call status webhook。
 
-当前版本不包含 Pipecat / STT / LLM / TTS。它只验证真实电话能进入 Rosie 后端。
+当前版本仍不在 call-webhook 内直接跑 Pipecat / STT / TTS；它负责呼叫控制、商家路由和 listen metadata。实时音频由 `services/realtime-voice` 承接，并在那里执行 STT -> `ai-agent` -> TTS turn pipeline。
 
 ## 快速启动
 
@@ -39,6 +39,7 @@ http://127.0.0.1:8000
 | `ROSIE_DEFAULT_TRANSFER_PHONE` | 空 | 后续转人工使用，当前 MVP 只保存 |
 | `ROSIE_PUBLIC_BASE_URL` | 空 | 未来生成 actionHook 使用 |
 | `ROSIE_WECOM_WEBHOOK_URL` | 空 | 可选企业微信机器人通知 |
+| `ROSIE_BUSINESS_API_URL` | 空 | Go 正式业务后端地址；设置后读取 `/merchant-profile` 的 `system_prompt` |
 | `ROSIE_USE_AI_GREETING` | `false` | 是否调用 `ai-agent` 生成欢迎语 |
 | `ROSIE_USE_AI_EXTRACT` | `false` | 是否调用 `ai-agent /extract` 生成来电摘要，关闭时使用本地规则兜底 |
 | `ROSIE_AI_AGENT_URL` | `http://127.0.0.1:8010` | ai-agent 地址 |
@@ -67,6 +68,7 @@ docker compose up --build
 
 ```env
 ROSIE_USE_AI_GREETING=true
+ROSIE_BUSINESS_API_URL=http://host.docker.internal:8030
 ROSIE_AI_AGENT_URL=http://host.docker.internal:8010
 ROSIE_AI_TIMEOUT_SECONDS=10
 ```
@@ -75,11 +77,12 @@ ROSIE_AI_TIMEOUT_SECONDS=10
 
 ```env
 ROSIE_USE_AI_GREETING=true
+ROSIE_BUSINESS_API_URL=http://127.0.0.1:8030
 ROSIE_AI_AGENT_URL=http://127.0.0.1:8010
 ROSIE_AI_TIMEOUT_SECONDS=10
 ```
 
-AI greeting 失败时会自动降级为固定欢迎语，不会阻塞电话接听。
+配置 `ROSIE_BUSINESS_API_URL` 后，call-webhook 会按 `merchant_id` 读取 Go API 的 `/merchant-profile`，把返回的 `system_prompt` 传给 `ai-agent /chat`、`ai-agent /extract`，并写入 realtime listen metadata，后续 Pipecat / STT / TTS 链路可直接复用。AI greeting 或 Go API 读取失败时会自动降级为固定欢迎语，不会阻塞电话接听。
 
 ## 接入实时语音 WebSocket
 
@@ -91,7 +94,7 @@ ROSIE_REALTIME_WS_URL=ws://你的服务器:8020/ws/jambonz/audio
 ROSIE_REALTIME_ACTION_HOOK=http://你的服务器:8000/webhooks/jambonz/listen-complete
 ```
 
-当前第一版只验证实时音频 WebSocket 是否能建立和收到 PCM 音频。下一步会把它接到 STT/TTS/Pipecat。
+`realtime-voice` 已支持消费 listen metadata、读取商家 `system_prompt`、调用 STT / `ai-agent` / TTS，并通过同一个 WebSocket 回写音频。真实 STT / TTS 服务通过 `services/realtime-voice` 的 HTTP provider 配置接入。
 
 ## jambonz 配置
 
@@ -188,6 +191,23 @@ curl http://127.0.0.1:8000/digests
 
 `/digests/preview` 会返回 `digest_text`，用于预览每日汇总正文。同一个 `call_sid` 重复提交时会更新原有 transcript、summary 和 inbox item，避免重试造成重复待办。`/digests/generate` 会把本批收件箱条目标记为 `digested`，后续预览不会重复汇总。
 
+定时汇总触发器：
+
+```bash
+curl -X POST "http://127.0.0.1:8000/internal/digest-tick"
+curl -X POST "http://127.0.0.1:8000/internal/digest-tick?now=2026-04-30T20:00:00"
+curl http://127.0.0.1:8000/notification-logs
+```
+
+服务器 cron 可以每分钟调用 `/internal/digest-tick`。服务会按商家的通知偏好判断是否到点，到点后生成正式汇总并写入 `notification_logs`。同一商家同一天同一时间重复触发会命中同一条 `idempotency_key`，不会重复生成待发送通知。
+
+当前通知只进入发送日志：
+
+- 默认渠道：`wechat_subscription`
+- 启用团队企业微信群偏好时：`wecom_robot`
+- 待发送状态：`queued`
+- 没有待汇总事项时：`skipped`
+
 ## 通知偏好
 
 默认策略：
@@ -226,10 +246,11 @@ curl -X PUT http://127.0.0.1:8000/notification-preferences \
 
 ```env
 ROSIE_USE_AI_EXTRACT=true
+ROSIE_BUSINESS_API_URL=http://127.0.0.1:8030
 ROSIE_AI_AGENT_URL=http://127.0.0.1:8010
 ```
 
-则摘要优先走 `ai-agent /extract`；失败时自动降级到本地规则。
+则摘要优先走 `ai-agent /extract`，并携带 Go 商家配置生成的 `system_prompt`；失败时自动降级到本地规则。
 
 ## 新增商家幕后接入号
 

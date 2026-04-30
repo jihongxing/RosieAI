@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
@@ -55,3 +57,39 @@ class OpenAICompatibleClient:
         message = choices[0].get("message") or {}
         return str(message.get("content", "")).strip()
 
+    async def stream_generate(self, model: str, prompt: str, system: str | None = None) -> AsyncIterator[str]:
+        messages = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
+
+        payload = {
+            "model": model,
+            "messages": messages,
+            "temperature": 0.3,
+            "max_tokens": 160,
+            "stream": True,
+        }
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with client.stream(
+                "POST",
+                f"{self.base_url}/chat/completions",
+                headers=self._headers(),
+                json=payload,
+            ) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if not line or not line.startswith("data:"):
+                        continue
+                    data_line = line.removeprefix("data:").strip()
+                    if data_line == "[DONE]":
+                        break
+                    data = json.loads(data_line)
+                    choices = data.get("choices") or []
+                    if not choices:
+                        continue
+                    delta = choices[0].get("delta") or {}
+                    token = str(delta.get("content") or "")
+                    if token:
+                        yield token

@@ -42,6 +42,9 @@ Rosie AI 不从零自研通信平台，也不直接裸写 FreeSWITCH 业务逻�
 | 收件箱 | 已跑通 | `/inbox` 返回待处理来电摘要，`call_sid` 幂等更新 |
 | 定时汇总数据 | 已跑通 | `/digests/preview`、`/digests/generate`、`/digests` 已完成 |
 | 通知偏好 | 已跑通 | `/notification-preferences` 支持默认策略和用户配置 |
+| 小程序页面雏形 | 已建立 | `apps/miniprogram` 已包含收件箱、通话详情、汇总历史、通知偏好页面 |
+| 商家配置 | 已建立 | `/merchant-profile` 与小程序商家配置页面已接入 |
+| 行业话术模板 | 已建立 | `/industry-templates` 首版覆盖理发店 / 美发店、本地生活服务 |
 | 真实 PSTN 入站 | 商务前置项 | 缺少真实可入站 SIP Trunk / DID / IMS 线路，不再阻塞业务层开发 |
 
 ### 1.2 通信能力边界
@@ -172,8 +175,8 @@ Pipecat 的价值：
 | FreeSWITCH | 1.10.x | 由 jambonz 管理，避免直接写复杂 dialplan |
 | Kamailio | 6.1.x，保守可先 6.0.x | 后期多节点引入 |
 | Pipecat | 当前稳定版 | 作为实时语音 Agent 框架 |
-| Python | 3.12 | 后端、Pipecat、自研服务 |
-| Go | 1.22+ | 后续高并发音频网关或工具服务 |
+| Go | 1.22+ | 正式业务后端、小程序 API、支付、审计、后台、后续高并发工具服务 |
+| Python | 3.12 | AI / 语音服务：ai-agent、Pipecat、STT / TTS、实验性推理链路 |
 | PostgreSQL | 17.x | 主业务数据库 |
 | Valkey / Redis | Valkey 8.x / Redis 7.2.x | 优先 Valkey，自建或托管均可 |
 | STT | FunASR + SenseVoice Small | 电话场景先用 Small 控延迟 |
@@ -343,6 +346,8 @@ Audio In
 ## 11. 业务后端
 
 Rosie 业务后端负责产品逻辑，不负责底层 SIP 细节。
+
+2026-04-30 架构决策：MVP 验证阶段使用 Python FastAPI 快速验证业务链路；验证通过后，正式业务后端切换为 Go。Python 继续保留在 AI / 语音链路中，包括 `ai-agent`、STT / TTS、Pipecat 和实验性推理能力。Go API 已接入 PostgreSQL store，运行时通过 `ROSIE_DATABASE_URL` 切换到正式数据库。
 
 | 模块 | 职责 |
 |------|------|
@@ -661,13 +666,24 @@ AI 指标：
 - 建立小程序收件箱后端接口 `/inbox`。
 - 建立汇总预览、正式生成和历史查询接口。
 - 建立通知偏好接口，默认每日 20:00 汇总、实时通知关闭、紧急提醒开启。
+- 建立定时汇总触发器 `/internal/digest-tick`，可由 cron 每分钟调用。
+- 建立通知发送日志 `/notification-logs`，先记录微信订阅消息 / 企业微信群机器人待发送记录。
+- 建立 Go 通话详情接口 `GET /calls/{call_sid}`。
+- 建立 Go 微信订阅消息发送器 `/internal/notifications/dispatch`，消费 `queued` 通知日志并回写 `sent` / `failed` 状态。
+- 建立 Go 小程序登录和 openid 绑定接口 `/auth/wechat-login`，通知发送优先使用商家绑定 openid。
+- 建立微信小程序页面雏形 `apps/miniprogram`，包含收件箱、通话详情、汇总历史和通知偏好。
+- 建立商家配置接口与页面，承接店名、号码、地址、营业时间、服务项目、FAQ、预约规则。
+- 建立第一版行业话术模板，覆盖理发店 / 美发店、本地生活服务，并生成 AI 系统提示词。
+- 将商家配置生成的 `system_prompt` 接入 Python `ai-agent` 与 `call-webhook`，用于欢迎语、摘要提取和后续 realtime metadata。
+- `realtime-voice` 已消费 realtime metadata，建立带商家上下文的 session context，并可通过模拟 STT 文本帧调用 `ai-agent /chat`。
+- `realtime-voice` 已建立 STT -> `ai-agent` -> TTS turn pipeline，支持 HTTP STT / TTS provider，并能把 TTS 音频通过 WebSocket 回写 jambonz。
+- `realtime-voice` 已新增真实语音 provider：`funasr` STT 可接 FunASR / SenseVoice，`edge` TTS 可通过 ffmpeg 转成电话侧 PCM，`pipecat_http` 可把 session context / history / 音频转交给外部 Pipecat worker。
 
 下一步：
 
-- 输出通话详情接口。
-- 增加定时汇总触发器，例如 `POST /internal/digest-tick`。
-- 建立通知发送日志和通道抽象。
-- 接入微信订阅消息作为低频汇总提醒。
+- 微信开发者工具联调小程序页面，接入真实 AppID、订阅消息授权和页面级错误处理。
+- 部署真实 FunASR / SenseVoice、TTS worker 或 Pipecat worker，压测电话侧端到端延迟。
+- 建立基于原始来电上下文的手动回拨审计。
 
 ### Week 3：实时 AI 链路
 
@@ -683,7 +699,7 @@ AI 指标：
 - 防骚扰规则。
 - 预约规则。
 - 通话记录。
-- 小程序收件箱和定时汇总。
+- 小程序收件箱、通话详情、汇总历史和定时汇总。
 - 企业微信群机器人作为团队通知可选项。
 - 小程序基础页面。
 - 声音克隆设置入口。

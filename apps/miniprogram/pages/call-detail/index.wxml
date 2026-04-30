@@ -1,0 +1,42 @@
+<view class="page">
+  <view wx:if="{{loading}}" class="empty">加载中</view>
+  <view wx:elif="{{showMissing}}" class="empty">未找到通话</view>
+
+  <block wx:else>
+    <view class="header">
+      <view class="title">{{summary.detailTitle}}</view>
+      <view class="subtitle">{{call.fromNumberText}} -> {{call.toNumberText}}</view>
+    </view>
+
+    <view class="card">
+      <view class="row">
+        <view>
+          <view class="label">处理状态</view>
+          <view class="value">{{inbox.statusText}}</view>
+        </view>
+        <view class="badge {{summary.priority}}">{{summary.priorityText}}</view>
+      </view>
+      <view class="body-text">{{summary.summaryText}}</view>
+    </view>
+
+    <view class="card">
+      <view class="section-title">关键信息</view>
+      <view class="field"><text class="label">预约时间</text><text>{{summary.appointmentTimeText}}</text></view>
+      <view class="field"><text class="label">客户姓名</text><text>{{summary.customerNameText}}</text></view>
+      <view class="field"><text class="label">客户电话</text><text>{{summary.customerPhoneText}}</text></view>
+      <view class="field"><text class="label">需要跟进</text><text>{{summary.followupText}}</text></view>
+    </view>
+
+    <view class="card">
+      <view class="section-title">完整转写</view>
+      <view class="body-text">{{transcript.transcriptText}}</view>
+    </view>
+
+    <view class="card">
+      <view class="section-title">审计信息</view>
+      <view class="field"><text class="label">Call SID</text><text>{{call.call_sid}}</text></view>
+      <view class="field"><text class="label">状态</text><text>{{call.call_status}}</text></view>
+      <view class="field"><text class="label">时间</text><text>{{call.createdAtLabel}}</text></view>
+    </view>
+  </block>
+</view>
